@@ -1,0 +1,162 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/michaeleasterly-cpu/packetvoid-dev-system/schemas/project_profile.schema.json",
+  "title": "PROJECT_PROFILE",
+  "description": "Consumer project configuration for the Packet Void Dev System bootstrap. Drives path registry generation, security-guidance rule, memory boundary, and observability output paths. The bootstrap script validates this file against the schema before rendering any artifact.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_name",
+    "language",
+    "deployment",
+    "database",
+    "critical_paths",
+    "claude_system_paths",
+    "security_sensitive_paths",
+    "forbidden_assumptions",
+    "memory_policy",
+    "review_mode",
+    "output_paths"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Pinned schema version. Bump deliberately when adding required fields."
+    },
+    "project_name": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_\\-.]*$",
+      "description": "Project identifier used in rendered templates. No spaces or shell metacharacters."
+    },
+    "language": {
+      "type": "string",
+      "enum": ["python", "typescript", "mixed", "other"]
+    },
+    "deployment": {
+      "type": "string",
+      "enum": ["railway", "vercel", "none", "custom"]
+    },
+    "database": {
+      "type": "string",
+      "enum": ["postgres", "sqlite", "none", "custom"]
+    },
+    "critical_paths": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "description": "Globs that become groups.heavy_lane in the rendered path registry."
+    },
+    "deployment_specific_paths": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "default": [],
+      "description": "Optional extra heavy_lane globs specific to the deployment shape."
+    },
+    "claude_system_paths": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "default": [
+        ".claude/rules/**",
+        ".claude/skills/**",
+        ".claude/agents/**",
+        ".claude/hooks/**",
+        ".claude/settings.json",
+        ".github/workflows/**"
+      ],
+      "description": "Globs that become groups.claude_system in the rendered path registry."
+    },
+    "security_sensitive_paths": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "description": "Globs that drive the rendered security-guidance rule's frontmatter paths."
+    },
+    "forbidden_assumptions": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "description": "Runtime behaviors the dev system must not silently authorize. Rendered into the security-guidance rule body."
+    },
+    "memory_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "local_memory_limit_bytes",
+        "memory_boundary_doc",
+        "api_memstores_enabled"
+      ],
+      "properties": {
+        "local_memory_limit_bytes": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65536,
+          "description": "C0.1 ceiling on the local MEMORY.md index size."
+        },
+        "memory_boundary_doc": {
+          "type": "boolean",
+          "description": "When true, render docs/MEMSTORE_HANDOFF.md from the template."
+        },
+        "api_memstores_enabled": {
+          "type": "boolean",
+          "description": "When false (default), the rendered MEMSTORE_HANDOFF.md cloud-memstore section is a stub. When true, dev_memstore_id and agent_memstore_id must be set by the consumer — never shipped by the dev system."
+        },
+        "dev_memstore_id": {
+          "type": "string",
+          "default": "",
+          "description": "Consumer-supplied Anthropic memstore ID for dev / cross-session memory. Empty string when api_memstores_enabled is false."
+        },
+        "agent_memstore_id": {
+          "type": "string",
+          "default": "",
+          "description": "Consumer-supplied Anthropic memstore ID for autonomous-agent learning. Empty string when api_memstores_enabled is false."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"api_memstores_enabled": {"const": true}},
+            "required": ["api_memstores_enabled"]
+          },
+          "then": {
+            "required": ["dev_memstore_id", "agent_memstore_id"],
+            "properties": {
+              "dev_memstore_id": {"minLength": 1},
+              "agent_memstore_id": {"minLength": 1}
+            }
+          }
+        }
+      ]
+    },
+    "review_mode": {
+      "type": "string",
+      "enum": ["claude-review-only"],
+      "description": "Review automation mode. C0.4 prohibits any other value — auto-fix and auto-merge are operator-only."
+    },
+    "output_paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operator_reports"],
+      "properties": {
+        "operator_reports": {
+          "type": "string",
+          "description": "Where the session/cost report writes; must be a gitignored relative path."
+        }
+      }
+    },
+    "home_session_path": {
+      "type": "string",
+      "description": "Local Claude Code session jsonl directory; default for the session-report script."
+    },
+    "python_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$"
+    },
+    "test_command": {
+      "type": "string"
+    },
+    "gitleaks_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    }
+  }
+}

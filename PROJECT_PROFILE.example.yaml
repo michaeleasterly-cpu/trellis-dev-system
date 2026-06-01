@@ -1,0 +1,101 @@
+# PROJECT_PROFILE.yaml — consumer project configuration for Packet Void
+# Dev System bootstrap. Copy this to your project root, fill in, and pass
+# to ``bootstrap_project.py`` (lands in D0c).
+#
+# Schema: schemas/project_profile.schema.json (JSON Schema draft-07).
+# The bootstrap script validates this file before rendering anything.
+#
+# NEVER paste secrets, API keys, broker credentials, Postgres URLs with
+# credentials, or memstore IDs that belong to someone else into this file.
+# The dev system enforces the C0.4 security-guidance cascade — anything
+# secret-shaped is redacted at the layer where it surfaces.
+
+schema_version: 1
+
+# Required identity fields.
+project_name: my-project                    # used everywhere a template needs the project name
+language: python                             # python | typescript | mixed | other
+deployment: railway                          # railway | vercel | none | custom
+database: postgres                           # postgres | sqlite | none | custom
+
+# Critical paths that drive ``groups.heavy_lane`` in the rendered
+# ``.claude/path_registry.yaml`` (H0 pattern from the donor repo). These
+# globs are also fed into the Claude review workflow's ``paths:`` filter,
+# the heavy-lane rule's frontmatter, the PR template's risk-paths
+# checklist, the session-start hook's heredoc, and the DEV_PIPELINE
+# standard's §0 enumeration. Drift between them is caught by the
+# rendered ``scripts/check_manifests.py``.
+critical_paths:
+  - "src/auth/**"
+  - "src/billing/**"
+  - "migrations/**"
+
+# Extra heavy-lane paths that are specific to your deployment shape.
+# Empty list is fine. Examples below for the supported profiles.
+deployment_specific_paths:
+  - "railway.json"
+  - "Procfile"
+
+# Drives ``groups.claude_system`` in the rendered path registry. Defaults
+# below match the donor repo's C0.3 layer; only customize if you know
+# why you need to.
+claude_system_paths:
+  - ".claude/rules/**"
+  - ".claude/skills/**"
+  - ".claude/agents/**"
+  - ".claude/hooks/**"
+  - ".claude/settings.json"
+  - ".github/workflows/**"
+
+# Drives the rendered ``.claude/rules/security-guidance.md`` frontmatter
+# ``paths:`` glob. C0.4 mandates broad coverage including dependency
+# manifests; the example below mirrors the donor repo's choice.
+security_sensitive_paths:
+  - ".github/workflows/**"
+  - ".gitleaks.toml"
+  - ".gitleaksignore"
+  - ".pre-commit-config.yaml"
+  - "pyproject.toml"
+  - "requirements*.txt"
+  - "Pipfile*"
+  - ".github/dependabot.yml"
+
+# Forbidden runtime assumptions. Rendered into the security-guidance
+# rule body so future agents/skills cannot silently authorize them.
+forbidden_assumptions:
+  - docker
+  - "railway up unless explicitly approved"
+  - auto-merge
+  - auto-fix
+
+# Memory boundary policy. Cloud (Anthropic API beta) memstores are OFF
+# by default. Enable per project; supply YOUR OWN IDs — never use
+# someone else's. Sentinels enforce that the dev system itself ships
+# zero hardcoded IDs.
+memory_policy:
+  local_memory_limit_bytes: 24400            # C0.1 ceiling
+  memory_boundary_doc: true                  # render docs/MEMSTORE_HANDOFF.md
+  api_memstores_enabled: false               # CLOUD memstores OFF by default
+  # When api_memstores_enabled: true, fill these with YOUR project's
+  # memstore IDs. Leave empty or unset when api_memstores_enabled is
+  # false — bootstrap renders the cloud-memory doc section as a stub
+  # explaining the boundary instead of an active endpoint list.
+  # NEVER paste another project's IDs here.
+  dev_memstore_id: ""                        # consumer-supplied; shape is `memstore_` + alphanumeric suffix
+  agent_memstore_id: ""                      # consumer-supplied; same shape
+
+# Review automation mode. The donor repo's C0.4 cascade prohibits any
+# value other than ``claude-review-only`` — auto-fix and auto-merge are
+# operator-only.
+review_mode: claude-review-only
+
+# Output paths for generated artifacts that should be gitignored.
+output_paths:
+  operator_reports: ".operator/reports/claude/"
+
+# Per-project knobs. Used by the rendered session-report script and
+# Claude-Code memory layout assumptions. Leave defaults if unsure.
+home_session_path: "~/.claude/projects/-Users-USERNAME-my-project/"
+python_version: "3.11"
+test_command: "pytest -p no:xdist -q"
+gitleaks_version: "8.30.1"

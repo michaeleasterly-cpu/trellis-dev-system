@@ -1,0 +1,24 @@
+[project]
+name = "packetvoid-dev-system"
+version = "0.1.0"
+description = "Reusable Claude/dev workflow scaffold for new repositories (D0a skeleton)."
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Michael Easterly"}]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra"
+xfail_strict = false
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+    ".venv",
+    "templates",  # rendered later, may contain {{ placeholders }} that aren't valid Python
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SLF"]

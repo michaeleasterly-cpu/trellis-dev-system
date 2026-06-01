@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtualenv
+.venv/
+venv/
+
+# Secrets / local env
+.env
+.env.*
+!.env.example
+
+# Operator-local Claude artifacts (dogfooded from the dev system itself)
+.operator/reports/claude/
+claude-session-report*.json
+claude-session-report*.md
+claude-session-report*.html
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
