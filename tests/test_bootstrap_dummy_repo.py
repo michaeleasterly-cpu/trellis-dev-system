@@ -168,19 +168,122 @@ def test_no_donor_repo_identifier_leaks_into_dummy(tmp_path: Path) -> None:
     target = tmp_path / "dummy"
     _run_bootstrap(target)
     findings: list[tuple[str, str, int]] = []
-    for path in (target / "docs").rglob("*.md"):
-        text = path.read_text(encoding="utf-8")
-        for pat in _DONOR_LEAK_PATTERNS:
-            idx = text.find(pat)
-            if idx >= 0:
-                line_no = text.count("\n", 0, idx) + 1
-                findings.append((path.name, pat, line_no))
+    for sub in ("docs", ".claude"):
+        sub_dir = target / sub
+        if not sub_dir.is_dir():
+            continue
+        for path in sub_dir.rglob("*"):
+            if not path.is_file():
+                continue
+            text = path.read_text(encoding="utf-8")
+            for pat in _DONOR_LEAK_PATTERNS:
+                idx = text.find(pat)
+                if idx >= 0:
+                    line_no = text.count("\n", 0, idx) + 1
+                    findings.append(
+                        (str(path.relative_to(target)), pat, line_no),
+                    )
     assert not findings, (
         "donor identifier leaked into rendered dummy repo:\n  "
         + "\n  ".join(
             f"{name} line {ln}: {pat!r}" for name, pat, ln in findings
         )
     )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# D0d — Claude surface rendering
+# ─────────────────────────────────────────────────────────────────────
+
+_EXPECTED_CLAUDE_TREE = (
+    ".claude/path_registry.yaml",
+    ".claude/rules/heavy-lane.md",
+    ".claude/rules/security-guidance.md",
+    ".claude/skills/security-review/SKILL.md",
+    ".claude/hooks/block-git-checkout.sh",
+    ".claude/hooks/session-start.sh",
+    ".claude/hooks/block-pytest-subset-when-critical.sh",
+    ".claude/agents/spec-reviewer.md",
+    ".claude/agents/code-quality-reviewer.md",
+)
+
+
+def test_bootstrap_renders_full_claude_surface(tmp_path: Path) -> None:
+    target = tmp_path / "dummy"
+    _run_bootstrap(target)
+    for rel in _EXPECTED_CLAUDE_TREE:
+        assert (target / rel).is_file(), (
+            f"missing rendered Claude-surface artifact: {rel}"
+        )
+
+
+def test_rendered_hooks_are_executable(tmp_path: Path) -> None:
+    target = tmp_path / "dummy"
+    _run_bootstrap(target)
+    for hook in (target / ".claude" / "hooks").glob("*.sh"):
+        mode = hook.stat().st_mode
+        assert mode & 0o111, f"rendered hook not executable: {hook.name}"
+
+
+def test_no_unresolved_placeholder_in_rendered_claude_surface(
+    tmp_path: Path,
+) -> None:
+    """The renderer-internal leftover check covers ``.md.template``
+    files. This test additionally scans the rendered ``.claude/`` tree
+    for any ``{{ word }}`` pattern (the same shape the renderer would
+    have raised on). ``${{ secrets.* }}`` style GitHub Actions
+    references DO NOT match because of the leading ``$`` AND because
+    the content (``secrets.*``) contains non-alphanumeric chars."""
+    target = tmp_path / "dummy"
+    _run_bootstrap(target)
+    leftover_re = re.compile(r"(?<!\$)\{\{\s*[A-Za-z0-9_]+\s*\}\}")
+    findings: list[tuple[str, list[str]]] = []
+    for path in (target / ".claude").rglob("*"):
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        leftovers = leftover_re.findall(text)
+        if leftovers:
+            findings.append((str(path.relative_to(target)), sorted(set(leftovers))))
+    assert not findings, (
+        f"unresolved placeholders in rendered .claude/: {findings}"
+    )
+
+
+def test_rendered_path_registry_lists_critical_paths(tmp_path: Path) -> None:
+    """A consumer's critical_paths must show up under
+    ``groups.heavy_lane.paths`` in the rendered path registry."""
+    target = tmp_path / "dummy"
+    _run_bootstrap(target)
+    registry = (target / ".claude" / "path_registry.yaml").read_text(
+        encoding="utf-8",
+    )
+    # Example profile has critical_paths = src/auth/**, src/billing/**,
+    # migrations/**, plus deployment_specific_paths railway.json + Procfile.
+    for expected in (
+        '- path: "src/auth/**"',
+        '- path: "src/billing/**"',
+        '- path: "migrations/**"',
+        '- path: "railway.json"',
+    ):
+        assert expected in registry, (
+            f"rendered path_registry missing: {expected}"
+        )
+
+
+def test_security_review_skill_copied_verbatim(tmp_path: Path) -> None:
+    """The security-review skill is verbatim-copied (not a template).
+    The rendered consumer copy must byte-match the dev-system source."""
+    target = tmp_path / "dummy"
+    _run_bootstrap(target)
+    rendered = (
+        target / ".claude" / "skills" / "security-review" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    source = (
+        _REPO / "devsystem" / "claude" / "skills"
+        / "security-review" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert rendered == source, "security-review skill diverged"
 
 
 def test_project_profile_yaml_copied_into_target(tmp_path: Path) -> None:

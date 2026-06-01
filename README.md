@@ -22,7 +22,8 @@ D0a is the **skeleton-only** stage of the extraction sequence planned in the don
 |---|---|---|
 | D0a | Repo skeleton: README + LICENSE + PROJECT_PROFILE example + JSON Schema + empty `devsystem/` and `templates/` trees + minimal CI | merged (PR #1) |
 | D0b | Portable docs as templates under `devsystem/docs/` | merged (PR #2) |
-| **D0c** | Portable scripts + bootstrap renderer + sentinel tests: `bootstrap_project.py`, `audit_project.py`, `check_manifests.py` (minimal baseline), `claude_session_report.py` (portable copy), `run_claude_session_report.sh` (wrapper), 4 new sentinel test files | **this PR** |
+| D0c | Portable scripts + bootstrap renderer + sentinel tests | merged (PR #3) |
+| **D0d** | Portable Claude surface: `path_registry.yaml.template`, `heavy-lane`/`security-guidance` rule templates, `security-review` skill (verbatim), `block-git-checkout` hook (verbatim) + `session-start` / `block-pytest-subset-when-critical` hook templates, `spec-reviewer` + `code-quality-reviewer` agent templates. Bootstrap + audit + check_manifests extended; `check_manifests.py --target-dir` validates a consumer's rendered `.claude/` surface. | **this PR** |
 | D0d | Portable rules + skills + hooks + agents | deferred |
 | D0e | Workflows + PR template + profile seeds | deferred |
 | D0f | Donor repo adopts the dev system (round-trip validation) | deferred until 2nd consumer |

@@ -171,3 +171,82 @@ def test_shell_wrapper_invokes_underlying_script_safely() -> None:
     assert "claude_session_report.py" in text, (
         "wrapper must invoke claude_session_report.py"
     )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# D0d — extend contract to the new Claude-surface artifacts
+# ─────────────────────────────────────────────────────────────────────
+
+_CLAUDE_DIR = _REPO / "devsystem" / "claude"
+
+# Prose files in the Claude tree (rules / skill / agent bodies) may
+# legitimately document the forbidden API URL substrings in their
+# prose to explain WHAT they forbid. Shell scripts and YAML configs
+# (path_registry, hooks) MUST NOT contain the runtime invocation
+# surface — that's what the per-file scan below targets.
+def _is_prose_claude_file(rel_str: str) -> bool:
+    if rel_str.endswith((".md", ".md.template")):
+        return True
+    return False
+
+
+def test_no_anthropic_api_invocation_in_claude_code_surface() -> None:
+    """No SHELL/YAML/JSON file in the Claude surface tree may contain
+    a runtime Anthropic API URL or beta-header. Markdown rule/skill/
+    agent bodies are allowed to mention the URLs in prose forbidding
+    them (the renderer never executes markdown)."""
+    findings: list[tuple[str, str]] = []
+    for path in _CLAUDE_DIR.rglob("*"):
+        if not path.is_file():
+            continue
+        rel = str(path.relative_to(_REPO))
+        if _is_prose_claude_file(rel):
+            continue
+        text = path.read_text(encoding="utf-8")
+        for substring in _FORBIDDEN_RUNTIME_SUBSTRINGS:
+            if substring in text:
+                findings.append((rel, substring))
+    assert not findings, (
+        f"Claude-surface non-prose file contains forbidden API surface: "
+        f"{findings}"
+    )
+
+
+def test_no_hardcoded_memstore_id_in_claude_surface() -> None:
+    findings: list[str] = []
+    for path in _CLAUDE_DIR.rglob("*"):
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        for m in _MEMSTORE_ID_HARDCODE_RE.finditer(text):
+            line_no = text.count("\n", 0, m.start()) + 1
+            findings.append(
+                f"{path.relative_to(_REPO)}:{line_no}"
+            )
+    assert not findings, (
+        f"Claude-surface template contains hardcoded memstore IDs: "
+        f"{findings}"
+    )
+
+
+def test_no_docker_or_railway_up_in_claude_surface() -> None:
+    """Same as the existing devsystem-scripts check, scoped to the
+    Claude-surface tree. Comments are stripped first."""
+    findings: list[tuple[str, str]] = []
+    for path in _CLAUDE_DIR.rglob("*"):
+        if not path.is_file():
+            continue
+        scan_text = _strip_comments(
+            path.read_text(encoding="utf-8"),
+            is_shell=path.suffix in (".sh",) or path.name.endswith(".sh.template"),
+        )
+        for pattern, label in (
+            (r"\bdocker\s+(?:run|build|compose|exec)\b", "docker invocation"),
+            (r"\brailway\s+up\b", "railway up"),
+        ):
+            if re.search(pattern, scan_text):
+                findings.append((str(path.relative_to(_REPO)), label))
+    assert not findings, (
+        f"Claude-surface template contains deploy-command invocations: "
+        f"{findings}"
+    )

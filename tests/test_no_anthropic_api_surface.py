@@ -42,6 +42,15 @@ _ALLOWLIST: tuple[str, ...] = (
     "tests/test_no_anthropic_api_surface.py",
     "tests/test_portable_docs_templates.py",
     "tests/test_portable_scripts_contract.py",
+    # D0d — the Claude-surface template sentinel documents the
+    # forbidden hook-body patterns (including ``ANTHROPIC_API_KEY``)
+    # in its ``_HOOK_FORBIDDEN_PATTERNS`` tuple. Same self-allowlist
+    # principle as the other sibling sentinels.
+    "tests/test_claude_surface_templates.py",
+    # D0d — check_manifests.py runs the same hook-forbidden-command
+    # scan at manifest-linter time and lists the forbidden patterns
+    # (including ANTHROPIC_API_KEY) in its tuple. Same principle.
+    "devsystem/scripts/check_manifests.py",
 )
 
 # File extensions that are *prose* — allowed to mention these substrings

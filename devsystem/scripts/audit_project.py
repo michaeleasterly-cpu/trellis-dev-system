@@ -23,6 +23,7 @@ _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 from bootstrap_project import (  # noqa: E402
     _list_templates,
+    _plan_claude_surface,
     _profile_assertions,
     _target_doc_path,
     parse_yaml,
@@ -46,6 +47,7 @@ def audit(target_dir: Path) -> int:
     profile = parse_yaml(profile_file.read_text(encoding="utf-8"))
     _profile_assertions(profile)
     findings: list[str] = []
+    # Docs drift.
     for template in _list_templates():
         rendered = render_template(
             template.read_text(encoding="utf-8"), profile,
@@ -60,6 +62,26 @@ def audit(target_dir: Path) -> int:
                 f"drift: {out_path} differs from re-rendered template "
                 f"{template.name}"
             )
+    # D0d — Claude-surface drift.
+    for out_path, expected_content, executable in _plan_claude_surface(
+        profile, target_dir,
+    ):
+        if not out_path.is_file():
+            findings.append(f"missing Claude-surface artifact: {out_path}")
+            continue
+        on_disk = out_path.read_text(encoding="utf-8")
+        if on_disk != expected_content:
+            findings.append(
+                f"drift: {out_path} differs from re-rendered template"
+            )
+            continue
+        if executable:
+            mode = out_path.stat().st_mode
+            if not (mode & 0o111):
+                findings.append(
+                    f"executable-bit drift: {out_path} should be "
+                    "executable (chmod +x)"
+                )
     if findings:
         for line in findings:
             print(line, file=sys.stderr)
