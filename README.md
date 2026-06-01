@@ -21,8 +21,8 @@ D0a is the **skeleton-only** stage of the extraction sequence planned in the don
 | Stage | Scope | Status |
 |---|---|---|
 | D0a | Repo skeleton: README + LICENSE + PROJECT_PROFILE example + JSON Schema + empty `devsystem/` and `templates/` trees + minimal CI | merged (PR #1) |
-| **D0b** | Portable docs as templates: `DEV_PIPELINE_STANDARD.md.template`, `MEMSTORE_HANDOFF.md.template`, `MEMORY_MAINTENANCE.md.template`, `SECURITY_GUIDANCE.md.template`, `CLAUDE_SESSION_OBSERVABILITY.md.template` under `devsystem/docs/` | **this PR** |
-| D0c | Portable tests + scripts + `bootstrap_project.py` core | deferred |
+| D0b | Portable docs as templates under `devsystem/docs/` | merged (PR #2) |
+| **D0c** | Portable scripts + bootstrap renderer + sentinel tests: `bootstrap_project.py`, `audit_project.py`, `check_manifests.py` (minimal baseline), `claude_session_report.py` (portable copy), `run_claude_session_report.sh` (wrapper), 4 new sentinel test files | **this PR** |
 | D0d | Portable rules + skills + hooks + agents | deferred |
 | D0e | Workflows + PR template + profile seeds | deferred |
 | D0f | Donor repo adopts the dev system (round-trip validation) | deferred until 2nd consumer |
