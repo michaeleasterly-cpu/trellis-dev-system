@@ -31,14 +31,28 @@ _API_INVOCATION_PATTERNS: tuple[str, ...] = (
 )
 
 # This test file mentions every forbidden substring above to do its job.
+# tests/test_portable_docs_templates.py also documents the
+# ANTHROPIC_API_KEY pattern in its own regex (forbidding raw assignments
+# in template bodies) — it's a sibling sentinel, allowlisted on the same
+# principle.
 _ALLOWLIST: tuple[str, ...] = (
     "tests/test_no_anthropic_api_surface.py",
+    "tests/test_portable_docs_templates.py",
 )
 
 # File extensions that are *prose* — allowed to mention these substrings
 # in documentation context. Code-shaped files (.py, .sh, .yaml, .json,
 # .toml) are NOT allowed to contain them.
+#
+# D0b extension: ``.md.template`` / ``.rst.template`` / ``.txt.template``
+# are also prose — they render into prose markdown docs at bootstrap
+# time. A template that documents the cloud-memstore curl protocol
+# (under the ``api_memstores_enabled: true`` conditional block) is
+# operator-readable documentation, not a runtime caller staged in.
 _PROSE_EXTENSIONS: frozenset[str] = frozenset({".md", ".rst", ".txt"})
+_PROSE_TEMPLATE_SUFFIXES: frozenset[str] = frozenset({
+    ".md.template", ".rst.template", ".txt.template",
+})
 
 
 def _scan_targets() -> list[Path]:
@@ -59,6 +73,10 @@ def _scan_targets() -> list[Path]:
             continue
         # Prose extensions can mention the API in documentation.
         if path.suffix in _PROSE_EXTENSIONS:
+            continue
+        # D0b: prose-template suffixes (.md.template etc.) also count
+        # as prose — they render into markdown docs at bootstrap time.
+        if any(rel_str.endswith(s) for s in _PROSE_TEMPLATE_SUFFIXES):
             continue
         out.append(path)
     return out

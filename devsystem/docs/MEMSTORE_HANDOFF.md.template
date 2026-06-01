@@ -1,0 +1,154 @@
+# Memory Boundary + Memstore Handoff
+
+Canonical memory-boundary model + the cross-session memstore handoff for the **{{ project_name }}** project.
+
+> **The rule of the file**: memory is *context*, not source of truth.
+> If a fact must be enforced, it belongs in tests/hooks/CI, not in
+> any memory tier below.
+
+## §1 — Four-tier memory boundary
+
+| Tier | Surface | Purpose | Allowed | Forbidden |
+|---|---|---|---|---|
+| **1** | `CLAUDE.md` (repo root) | Short operating rules loaded every session. | Non-negotiable repo rules; source-of-truth pointers; mandatory validation commands; pointer to this doc. | Long research notes; raw logs; raw command output; volatile task state. |
+| **2** | Claude Code local memory — `MEMORY.md` index + per-fact `<name>.md` files under `{{ home_session_path }}memory/` (auto-loaded at session start) | Compact project-local memory index and pointers. | Short summaries; links to durable docs; current project constraints; where to look for details. | Full specs; raw transcripts; secrets; private financial / account data; raw logs; anything that should be enforceable by tests / hooks. |
+| **3** | Anthropic API beta memstores (optional; controlled by `memory_policy.api_memstores_enabled`) | Cloud cross-session memory for durable assistant context. | Stable project decisions; high-level architecture decisions; failed-experiment summaries; operator preferences; pointers to repo docs. | API keys; broker credentials; private financial balances; raw logs; raw backtest dumps; rules that must be enforced by CI. |
+| **4** | Repo `docs/**`, `TODO.md`, `tests/**`, `.claude/hooks/**`, schemas, migrations | Durable, auditable source of truth and enforcement. | Architecture specs; implementation plans; accepted decisions; task tracking; tests; hooks; schemas. | n/a (this is the floor; if you can't put it here, see §3 — it probably doesn't belong anywhere). |
+
+**Tier-4 overrides tiers 1–3 absolutely.** Repo code, tests, schemas, and migrations are dispositive. Memory of any kind cannot override them: if memory disagrees with current code or a current test, trust the code/test and update or remove the memory.
+
+## §2 — Source-of-truth hierarchy (when sources disagree)
+
+1. **Live code, tests, schemas, migrations** (tier 4) — dispositive.
+2. **Repo docs** (`docs/**`, `TODO.md`) — dispositive for intent/design/plans.
+3. **CLAUDE.md** (tier 1) — dispositive for short, non-negotiable operating rules.
+4. **Local MEMORY.md and per-fact files** (tier 2) — context; verify against tiers 4, 2, 1 before acting.
+5. **Anthropic API memstores** (tier 3) — context; same verification rule.
+
+If a tier-3 memstore entry mentions a file path, flag, function, or test, **verify the named target exists** before recommending action on it (the entry was true *when written* — names can rename, code can ship, defects can be fixed).
+
+## §3 — Where new information belongs
+
+Decision flow, in order:
+
+1. **Must be enforced?** (a rule that should fail CI when violated) → tests, hooks, or `scripts/check_manifests.py`. Never memory.
+2. **Durable design or plan?** → `docs/superpowers/specs/` or `docs/superpowers/plans/` (gated docs-only PR per `docs/DEV_PIPELINE_STANDARD.md` §1).
+3. **Open task?** → `TODO.md` (the canonical work tracker; survives memory audits).
+4. **Stable repo policy** → `CLAUDE.md`.
+5. **Project-local context** (current constraints, why a choice was made) — short and pointer-y → tier 2 (`MEMORY.md` + per-fact file).
+6. **Cross-session signal** the next session needs to pick up cold → tier 3 memstore under `/sessions/` or `/handoffs/`.
+
+If the answer is "I want the assistant to remember a long passage verbatim", the answer is almost always **write a `docs/**` entry and put a one-line pointer in tier 2 or tier 3**. Memory entries should fit on one screen.
+
+## §4 — Forbidden content (every tier)
+
+Across all four tiers, never store:
+
+- API keys / OAuth tokens / SSH or RSA keys.
+- Service / vendor credentials of any kind.
+- Database connection strings with embedded credentials.
+- Private financial balances, account IDs, position-level data attributable to the operator personally.
+- Raw logs (application log rows, stack traces with paths).
+- Raw command output / raw backtest dumps / large-blob artifacts.
+- Anything covered by `.gitignore` / `.gitleaks.toml` exclusions.
+
+Secrets belong in `.env` (gitignored). Memory is not their lane.
+
+## §5 — Size discipline
+
+Tier-2 `MEMORY.md` has a hard ceiling of **{{ local_memory_limit_bytes }} bytes**. Above that, Claude Code truncates the index at session start — entries past the cutoff vanish silently. The sentinel `tests/test_memory_index_size.py` red-lines CI if a tracked `MEMORY.md` exceeds the limit. The local memstore directory (`{{ home_session_path }}memory/`) is operator-local and not tracked, so the sentinel cannot police it directly — `docs/MEMORY_MAINTENANCE.md` is the operator-side procedure for the local case.
+
+Remediation when `MEMORY.md` approaches the ceiling:
+
+1. **Summarize stale entries** — collapse older entries subsumed by newer, more-specific ones into a single survivor line.
+2. **Move durable decisions to `docs/**`** — anything that should outlive a memory-audit cycle becomes a doc; the memory entry becomes a one-line pointer.
+3. **Replace long descriptions with pointers** — `- [Title](file.md) — one-line hook` is the only allowed shape.
+
+The full audit procedure (line-count invariant, dedup checks, archival decisions) lives in `docs/MEMORY_MAINTENANCE.md`.
+
+## §6 — Cross-session memstore handoff (tier 3, OPTIONAL)
+
+Cloud (Anthropic API beta) memstores are **OFF by default** in this project. The setting lives in `PROJECT_PROFILE.yaml` under `memory_policy.api_memstores_enabled`. The dev-system bootstrap renders one of the two sections below into your project's `docs/MEMSTORE_HANDOFF.md` based on that value.
+
+<!-- BEGIN_API_MEMSTORES_DISABLED -->
+**Cloud memstores are disabled for this project** (`memory_policy.api_memstores_enabled: false`).
+
+Tier 3 is empty: no cloud cross-session memory is active. All durable cross-session knowledge lives in tiers 2 and 4 — the local `MEMORY.md` + per-fact `<name>.md` files at `{{ home_session_path }}memory/`, and the repo's tracked `docs/**` + `tests/**`.
+
+To enable cloud memstores later:
+
+1. Create one or two Anthropic memstores via the API (the dev system itself does NOT create them — that is an operator action).
+2. Set `memory_policy.api_memstores_enabled: true` in `PROJECT_PROFILE.yaml`.
+3. Set `memory_policy.dev_memstore_id` and `memory_policy.agent_memstore_id` to the IDs you created.
+4. Re-run `bootstrap_project.py` to regenerate this doc with the IDs-active section.
+5. Never paste another project's memstore IDs into this file. Each project owns its own.
+
+The dev-system bootstrap does **not** call the Anthropic API and does **not** write to any memstore. Bootstrap is a pure file-rendering operation.
+<!-- END_API_MEMSTORES_DISABLED -->
+
+<!-- BEGIN_API_MEMSTORES_ENABLED -->
+This project runs two Anthropic-hosted memstores (or one — `agent_memstore_id` can equal `dev_memstore_id`). Substantive content lives there; this section only points at them and documents the read/write protocol.
+
+| Memstore ID | Audience | Purpose |
+|---|---|---|
+| `{{ dev_memstore_id }}` | Dev sessions (Claude Code) | Standing rules, identity, per-session ledgers, cross-session handoffs. Both sessions read+write. |
+| `{{ agent_memstore_id }}` | Autonomous agents / long-running tasks (project-specific) | Prior emissions, outcomes, lessons learned. Dev sessions can READ for context but typically should not WRITE (that's the agent's lane). |
+
+Both memstores survive session boundaries with the API's published version-history window.
+
+**Don't conflate them.** Operator-facing handoffs → dev store. Agent-internal learning → agent store.
+
+### Quick start (one-liners)
+
+Requires `.env` with `ANTHROPIC_API_KEY`. Pick the right `MEMSTORE_ID`:
+
+```bash
+# Dev / cross-session store (default for Claude Code sessions):
+MEMSTORE_ID={{ dev_memstore_id }}
+
+# Agent store (read-only for dev sessions; written by the agent task):
+# MEMSTORE_ID={{ agent_memstore_id }}
+
+source .env
+
+# List everything (response key is .data — `limit` cap is 100):
+curl -s "https://api.anthropic.com/v1/memory_stores/$MEMSTORE_ID/memories?limit=100" \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "anthropic-beta: {{ anthropic_beta_header }}" | jq -r '.data[] | "\(.id)  \(.path)"' | sort
+
+# Read one entry by mem_id (the `id` field, NOT the path):
+curl -s "https://api.anthropic.com/v1/memory_stores/$MEMSTORE_ID/memories/<mem_id>" \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "anthropic-beta: {{ anthropic_beta_header }}" | jq -r .content
+
+# Write a new entry (latest-write-wins per path):
+curl -s -X POST "https://api.anthropic.com/v1/memory_stores/$MEMSTORE_ID/memories" \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "anthropic-beta: {{ anthropic_beta_header }}" \
+  -H "content-type: application/json" \
+  -d '{"path":"/sessions/YYYY-MM-DD-MY-session.md","content":"## state at end of session...\n"}'
+```
+
+Path constraint: `^(/[^/ ]+)+$` — absolute, no `//`, no null. `.md` extension by convention.
+
+### Suggested namespace
+
+| Prefix | Purpose |
+|---|---|
+| `/agent-context/` | Standing rules, identity, hard rules — read on session start. |
+| `/sessions/YYYY-MM-DD-<topic>.md` | Per-session ledgers (what got done, what's in-flight). |
+| `/handoffs/` | Cross-session coordination notes. |
+
+Keep entries short and atomic. Latest write per path wins; server-side version history covers a published window.
+
+### Cost posture
+
+Memory Store API calls hit `api.anthropic.com` — billed against API credits, NOT Claude Max. The tier-2 file-based memory at `{{ home_session_path }}memory/` is session-startup auto-loaded (zero cost) and complements tier 3.
+
+### Boundary reminder
+
+The dev-system bootstrap and the rendered tooling (manifest linter, session-cost report, sentinel tests) **never call the Anthropic API and never write to memstores.** Cloud-memstore reads and writes are operator-initiated only.
+<!-- END_API_MEMSTORES_ENABLED -->
