@@ -31,13 +31,17 @@ _API_INVOCATION_PATTERNS: tuple[str, ...] = (
 )
 
 # This test file mentions every forbidden substring above to do its job.
-# tests/test_portable_docs_templates.py also documents the
-# ANTHROPIC_API_KEY pattern in its own regex (forbidding raw assignments
-# in template bodies) — it's a sibling sentinel, allowlisted on the same
-# principle.
+# Sibling sentinels that document the forbidden pattern shapes in their
+# own bodies are allowlisted on the same principle:
+#   * tests/test_portable_docs_templates.py — D0b template scanner
+#     that forbids raw ANTHROPIC_API_KEY assignments in template bodies.
+#   * tests/test_portable_scripts_contract.py — D0c devsystem-scripts
+#     contract that documents the forbidden API-URL substrings in
+#     ``_FORBIDDEN_RUNTIME_SUBSTRINGS``.
 _ALLOWLIST: tuple[str, ...] = (
     "tests/test_no_anthropic_api_surface.py",
     "tests/test_portable_docs_templates.py",
+    "tests/test_portable_scripts_contract.py",
 )
 
 # File extensions that are *prose* — allowed to mention these substrings
