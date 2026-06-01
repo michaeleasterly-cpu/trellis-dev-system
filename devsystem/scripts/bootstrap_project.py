@@ -140,10 +140,24 @@ def _parse_scalar(rest: str) -> object:
 
 
 def _parse_list(block_lines: list[str]) -> list:
+    """Parse a YAML list block.
+
+    Supports two D0d shapes:
+      * plain scalar items:    ``- "src/auth/**"``
+      * mapping items:         ``- path: "src/auth/**"``
+                               ``  why: "auth surface"``
+
+    Mapping items are detected when the text after ``- `` contains
+    ``key: value``. Continuation lines for the mapping appear at the
+    base indent + 2 (matching the column of the key after the dash).
+    """
     out: list = []
     base_indent: int | None = None
-    for raw in block_lines:
+    i = 0
+    while i < len(block_lines):
+        raw = block_lines[i]
         if not raw.strip():
+            i += 1
             continue
         indent = len(raw) - len(raw.lstrip())
         if base_indent is None:
@@ -158,8 +172,45 @@ def _parse_list(block_lines: list[str]) -> list:
             raise ValueError(
                 f"expected `- value` list item; got {stripped!r}"
             )
-        value = stripped[2:].strip()
-        out.append(_parse_scalar(_strip_inline_comment(value)))
+        rest = stripped[2:].strip()
+        # Detect mapping-item form: ``- key: value`` (a key followed by
+        # a colon at the first non-quoted column).
+        is_mapping_item = False
+        if rest and not rest.startswith(("'", '"')):
+            kp, sep, _ = rest.partition(":")
+            if sep and " " not in kp and kp:
+                is_mapping_item = True
+        if is_mapping_item:
+            # Collect this item's mapping lines: the head line (with
+            # the dash) plus any subsequent lines at indent + 2.
+            item_block: list[str] = [
+                " " * (base_indent + 2) + rest
+            ]
+            j = i + 1
+            while j < len(block_lines):
+                nxt = block_lines[j]
+                if not nxt.strip():
+                    j += 1
+                    continue
+                nxt_indent = len(nxt) - len(nxt.lstrip())
+                if nxt_indent == base_indent + 2:
+                    item_block.append(nxt)
+                    j += 1
+                    continue
+                if nxt_indent <= base_indent:
+                    break
+                raise ValueError(
+                    "mapping-item continuation must be at "
+                    f"{base_indent + 2} columns; got {nxt_indent} in "
+                    f"{nxt!r}"
+                )
+            out.append(_parse_object(item_block))
+            i = j
+            continue
+        # Plain scalar item.
+        value = _strip_inline_comment(rest)
+        out.append(_parse_scalar(value))
+        i += 1
     return out
 
 
@@ -228,22 +279,136 @@ def resolve_conditional_blocks(
     return text
 
 
+def _path_entries(
+    profile: dict, key: str, default_why: str,
+) -> list[dict[str, str]]:
+    """Return normalized ``[{path, why}, ...]`` entries from a profile
+    list field. Handles both shapes:
+
+      * plain strings → ``{path: str, why: default_why}``
+      * mappings      → ``{path: item.path, why: item.why or default_why}``
+    """
+    out: list[dict[str, str]] = []
+    for item in profile.get(key, []) or []:
+        if isinstance(item, dict):
+            path_val = str(item.get("path", "")).strip()
+            why_val = str(item.get("why") or default_why).strip()
+        else:
+            path_val = str(item).strip()
+            why_val = default_why
+        if path_val:
+            out.append({"path": path_val, "why": why_val})
+    return out
+
+
 def _markdown_bullets(items: list[str]) -> str:
     if not items:
         return "_(none configured)_"
     return "\n".join(f"- `{p}`" for p in items)
 
 
+def _frontmatter_paths_yaml(items: list[str], indent: int = 2) -> str:
+    """Render a YAML frontmatter ``paths:`` list (caller writes the
+    ``paths:`` line itself; this returns the indented bullet block)."""
+    if not items:
+        return f"{' ' * indent}# (no paths configured for this profile)"
+    pad = " " * indent
+    return "\n".join(f'{pad}- "{p}"' for p in items)
+
+
+def _registry_yaml_with_why(
+    entries: list[dict[str, str]], indent: int,
+) -> str:
+    """Render path-registry-style entries:
+
+        <indent>- path: "..."
+        <indent+2>why: "..."
+    """
+    if not entries:
+        return f"{' ' * indent}# (no entries — set in PROJECT_PROFILE)"
+    pad_dash = " " * indent
+    pad_cont = " " * (indent + 2)
+    out: list[str] = []
+    for e in entries:
+        path_escaped = e["path"].replace('"', '\\"')
+        why_escaped = e["why"].replace('"', '\\"')
+        out.append(f'{pad_dash}- path: "{path_escaped}"')
+        out.append(f'{pad_cont}why: "{why_escaped}"')
+    return "\n".join(out)
+
+
+def _shell_summary(items: list[str]) -> str:
+    """Render a comma-separated path list safe for shell heredocs."""
+    if not items:
+        return "(none)"
+    return ", ".join(items)
+
+
+def _critical_subset_regex(items: list[str]) -> str:
+    """Convert each glob to a regex-safe path-prefix and join with `|`.
+
+    For shell ``grep -E``: strip ``/**`` and trailing ``/`` so the
+    prefix matches a directory-anchored path. Inner ``**`` segments
+    collapse to ``.*``. Characters that have special meaning in
+    extended regex are escaped where they appear outside the glob
+    metacharacters."""
+    if not items:
+        return "(?!x)x"  # an alternation that matches nothing.
+    out: list[str] = []
+    for item in items:
+        s = str(item).strip()
+        # Drop a trailing ``/**`` first.
+        if s.endswith("/**"):
+            s = s[:-3]
+        # Replace remaining ``**`` with ``.*``.
+        s = s.replace("**", ".*")
+        # Escape regex metas that aren't part of the glob.
+        s = re.sub(r"([.+()|^$\[\]{}])", r"\\\1", s)
+        # Restore the ``.*`` (the previous escape doubled the backslash).
+        s = s.replace("\\.\\*", ".*")
+        # Match the prefix anchored at ``/`` or string start.
+        out.append("(?:^|/)" + s)
+    return "|".join(f"({p})" for p in out)
+
+
+def _just_paths(entries: list[dict[str, str]]) -> list[str]:
+    return [e["path"] for e in entries]
+
+
 def _flat_substitutions(profile: dict) -> dict[str, str]:
-    """Compute scalar + markdown-list substitutions from the profile."""
+    """Compute scalar + markdown-list + YAML-list substitutions from
+    the profile. All placeholders the dev system uses across the
+    docs/template + Claude-surface set."""
     mem = profile.get("memory_policy", {}) or {}
     op = profile.get("output_paths", {}) or {}
     review_mode = profile.get("review_mode", "claude-review-only")
 
-    heavy_paths = list(profile.get("critical_paths", []) or [])
-    heavy_paths.extend(profile.get("deployment_specific_paths", []) or [])
-    sec_paths = list(profile.get("security_sensitive_paths", []) or [])
+    heavy_entries = _path_entries(
+        profile, "critical_paths", "critical project path"
+    )
+    heavy_entries.extend(
+        _path_entries(
+            profile,
+            "deployment_specific_paths",
+            "deployment-specific critical path",
+        )
+    )
+    security_entries = _path_entries(
+        profile,
+        "security_sensitive_paths",
+        "security-sensitive path",
+    )
+    claude_system_entries = _path_entries(
+        profile,
+        "claude_system_paths",
+        "Claude extension-layer path",
+    )
     forbidden = list(profile.get("forbidden_assumptions", []) or [])
+
+    heavy_paths = _just_paths(heavy_entries)
+    security_paths = _just_paths(security_entries)
+    # claude_system_entries used in registry-with-why placeholder
+    # only; no flat-path representation needed here.
 
     flat: dict[str, str] = {
         "project_name": str(profile.get("project_name", "")),
@@ -255,12 +420,30 @@ def _flat_substitutions(profile: dict) -> dict[str, str]:
         "local_memory_limit_bytes": str(
             mem.get("local_memory_limit_bytes", 24400)
         ),
+        # Markdown-list placeholders (for docs templates).
         "heavy_lane_paths_markdown": _markdown_bullets(heavy_paths),
-        "security_sensitive_paths_markdown": _markdown_bullets(sec_paths),
+        "security_sensitive_paths_markdown": _markdown_bullets(
+            security_paths
+        ),
         "forbidden_assumptions_markdown": _markdown_bullets(forbidden),
+        # YAML-list placeholders for rule frontmatter (indent 2).
+        "heavy_lane_paths_yaml": _frontmatter_paths_yaml(heavy_paths, 2),
+        "security_sensitive_paths_yaml": _frontmatter_paths_yaml(
+            security_paths, 2
+        ),
+        # Registry-style placeholders for .claude/path_registry.yaml
+        # (indent 6 — ``    paths:`` is at indent 4, items at 6).
+        "heavy_lane_paths_yaml_with_why": _registry_yaml_with_why(
+            heavy_entries, 6
+        ),
+        "claude_system_paths_yaml_with_why": _registry_yaml_with_why(
+            claude_system_entries, 6
+        ),
+        # Shell-safe placeholders for hooks.
+        "heavy_lane_paths_shell_summary": _shell_summary(heavy_paths),
+        "critical_subset_paths_regex": _critical_subset_regex(heavy_paths),
         # Memstore enabled-block placeholders (only meaningful when
-        # api_memstores_enabled is true; substitution always runs but
-        # the values stay empty strings when disabled).
+        # api_memstores_enabled is true).
         "dev_memstore_id": str(mem.get("dev_memstore_id", "") or ""),
         "agent_memstore_id": str(mem.get("agent_memstore_id", "") or ""),
         "anthropic_beta_header": str(
@@ -330,6 +513,113 @@ def _target_doc_path(template: Path, target_dir: Path) -> Path:
     return target_dir / "docs" / rendered_name
 
 
+# ─────────────────────────────────────────────────────────────────────
+# D0d — Claude-surface render plan
+# ─────────────────────────────────────────────────────────────────────
+
+_DEVSYSTEM_CLAUDE = _DEVSYSTEM_ROOT / "devsystem" / "claude"
+
+
+def _plan_claude_surface(
+    profile: dict, target_dir: Path,
+) -> list[tuple[Path, str, bool]]:
+    """Return ``(out_path, content, executable)`` triples for every
+    Claude-surface artifact rendered into the target repo.
+
+    Rendering rules:
+      * ``devsystem/claude/path_registry.yaml.template`` →
+        ``<target>/.claude/path_registry.yaml`` (rendered)
+      * ``devsystem/claude/rules/*.md.template`` →
+        ``<target>/.claude/rules/<name>.md`` (rendered)
+      * ``devsystem/claude/skills/<name>/SKILL.md`` →
+        ``<target>/.claude/skills/<name>/SKILL.md`` (verbatim copy;
+        the security-review skill is content-portable as-is)
+      * ``devsystem/claude/hooks/*.sh`` → verbatim, executable
+      * ``devsystem/claude/hooks/*.sh.template`` → rendered, executable
+      * ``devsystem/claude/agents/*.md.template`` → rendered
+    """
+    plan: list[tuple[Path, str, bool]] = []
+    claude_root = target_dir / ".claude"
+    if not _DEVSYSTEM_CLAUDE.is_dir():
+        return plan
+
+    # Path registry.
+    registry_template = _DEVSYSTEM_CLAUDE / "path_registry.yaml.template"
+    if registry_template.is_file():
+        plan.append(
+            (
+                claude_root / "path_registry.yaml",
+                render_template(
+                    registry_template.read_text(encoding="utf-8"), profile,
+                ),
+                False,
+            )
+        )
+
+    rules_dir = _DEVSYSTEM_CLAUDE / "rules"
+    if rules_dir.is_dir():
+        for template in sorted(rules_dir.glob("*.md.template")):
+            rendered_name = template.name[: -len(".template")]
+            plan.append(
+                (
+                    claude_root / "rules" / rendered_name,
+                    render_template(
+                        template.read_text(encoding="utf-8"), profile,
+                    ),
+                    False,
+                )
+            )
+
+    skills_dir = _DEVSYSTEM_CLAUDE / "skills"
+    if skills_dir.is_dir():
+        for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
+            skill_name = skill_md.parent.name
+            plan.append(
+                (
+                    claude_root / "skills" / skill_name / "SKILL.md",
+                    skill_md.read_text(encoding="utf-8"),
+                    False,
+                )
+            )
+
+    hooks_dir = _DEVSYSTEM_CLAUDE / "hooks"
+    if hooks_dir.is_dir():
+        for hook in sorted(hooks_dir.glob("*.sh")):
+            plan.append(
+                (
+                    claude_root / "hooks" / hook.name,
+                    hook.read_text(encoding="utf-8"),
+                    True,
+                )
+            )
+        for template in sorted(hooks_dir.glob("*.sh.template")):
+            rendered_name = template.name[: -len(".template")]
+            plan.append(
+                (
+                    claude_root / "hooks" / rendered_name,
+                    render_template(
+                        template.read_text(encoding="utf-8"), profile,
+                    ),
+                    True,
+                )
+            )
+
+    agents_dir = _DEVSYSTEM_CLAUDE / "agents"
+    if agents_dir.is_dir():
+        for template in sorted(agents_dir.glob("*.md.template")):
+            rendered_name = template.name[: -len(".template")]
+            plan.append(
+                (
+                    claude_root / "agents" / rendered_name,
+                    render_template(
+                        template.read_text(encoding="utf-8"), profile,
+                    ),
+                    False,
+                )
+            )
+    return plan
+
+
 def bootstrap(
     *,
     profile_file: Path,
@@ -358,7 +648,7 @@ def bootstrap(
             "overwrite or pick a fresh path"
         )
 
-    planned: list[tuple[Path, str]] = []
+    docs_planned: list[tuple[Path, str]] = []
     templates = _list_templates()
     if not templates:
         raise SystemExit(
@@ -369,28 +659,41 @@ def bootstrap(
             template.read_text(encoding="utf-8"), profile,
         )
         out_path = _target_doc_path(template, target_dir)
-        planned.append((out_path, rendered))
+        docs_planned.append((out_path, rendered))
+
+    # D0d — also plan the Claude-surface artifacts.
+    claude_planned = _plan_claude_surface(profile, target_dir)
 
     # Copy PROJECT_PROFILE.yaml verbatim so audit can reload it.
     profile_out = target_dir / "PROJECT_PROFILE.yaml"
 
     if dry_run:
         print(f"[dry-run] target: {target_dir}")
-        for out_path, _ in planned:
+        for out_path, _ in docs_planned:
             print(f"[dry-run] would write: {out_path}")
+        for out_path, _, exe in claude_planned:
+            tag = "(+x)" if exe else "   "
+            print(f"[dry-run] would write {tag}: {out_path}")
         print(f"[dry-run] would write: {profile_out}")
         return 0
 
     target_dir.mkdir(parents=True, exist_ok=True)
     (target_dir / "docs").mkdir(parents=True, exist_ok=True)
-    for out_path, content in planned:
+    for out_path, content in docs_planned:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(content, encoding="utf-8")
+    for out_path, content, exe in claude_planned:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(content, encoding="utf-8")
+        if exe:
+            mode = out_path.stat().st_mode | 0o111
+            out_path.chmod(mode)
     shutil.copyfile(profile_file, profile_out)
 
     print(
-        f"bootstrap_project: rendered {len(planned)} doc(s) "
-        f"into {target_dir}/docs and wrote PROJECT_PROFILE.yaml"
+        f"bootstrap_project: rendered {len(docs_planned)} doc(s) + "
+        f"{len(claude_planned)} Claude-surface artifact(s) "
+        f"into {target_dir} and wrote PROJECT_PROFILE.yaml"
     )
     return 0
 

@@ -80,3 +80,42 @@ def test_audit_refuses_target_without_project_profile(tmp_path: Path) -> None:
         "audit should exit 2 on missing PROJECT_PROFILE.yaml"
     )
     assert "PROJECT_PROFILE" in proc.stderr
+
+
+# ─────────────────────────────────────────────────────────────────────
+# D0d — Claude surface drift detection
+# ─────────────────────────────────────────────────────────────────────
+
+def test_audit_detects_claude_rule_drift(tmp_path: Path) -> None:
+    target = tmp_path / "dummy"
+    _bootstrap_into(target)
+    rule = target / ".claude" / "rules" / "heavy-lane.md"
+    rule.write_text(
+        rule.read_text(encoding="utf-8") + "\n<!-- drift -->\n",
+        encoding="utf-8",
+    )
+    proc = _audit(target)
+    assert proc.returncode == 1
+    assert "heavy-lane.md" in proc.stderr
+    assert "drift" in proc.stderr.lower()
+
+
+def test_audit_detects_hook_exe_bit_drift(tmp_path: Path) -> None:
+    target = tmp_path / "dummy"
+    _bootstrap_into(target)
+    hook = target / ".claude" / "hooks" / "block-git-checkout.sh"
+    mode = hook.stat().st_mode & ~0o111
+    hook.chmod(mode)
+    proc = _audit(target)
+    assert proc.returncode == 1
+    assert "executable" in proc.stderr.lower()
+    assert "block-git-checkout.sh" in proc.stderr
+
+
+def test_audit_detects_missing_claude_artifact(tmp_path: Path) -> None:
+    target = tmp_path / "dummy"
+    _bootstrap_into(target)
+    (target / ".claude" / "agents" / "spec-reviewer.md").unlink()
+    proc = _audit(target)
+    assert proc.returncode == 1
+    assert "spec-reviewer.md" in proc.stderr

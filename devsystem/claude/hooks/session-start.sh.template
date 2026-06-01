@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# SessionStart — one-line summary of the active Claude extension surface +
+# canonical work-tracking directive + auto-extracted list of open
+# TODO.md H2 sections.
+#
+# Project: {{ project_name }}
+# Project SoT: docs/DEV_PIPELINE_STANDARD.md §0; TODO.md is the canonical
+# work-tracking surface (git-tracked).
+#
+# Authoritative external: https://code.claude.com/docs/en/hooks-guide
+set -e
+
+# Count from repo root; tolerate missing dirs.
+rules_count="$(find .claude/rules -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+skills_count="$(find .claude/skills -mindepth 2 -maxdepth 2 -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')"
+agents_count="$(find .claude/agents -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+hooks_count="$(find .claude/hooks -maxdepth 1 -type f -name '*.sh' 2>/dev/null | wc -l | tr -d ' ')"
+
+# Extract open H2 sections from TODO.md (root) — those lacking ✅ / ⚰️ /
+# DONE / ARCHIVED / CLOSED markers. Capped at 20 lines so this stays
+# well under the SessionStart context budget.
+todo_open=""
+if [ -f TODO.md ]; then
+  todo_open="$(grep -nE '^## ' TODO.md | grep -viE '✅|⚰️|DONE|ARCHIVED|CLOSED' | head -20)"
+fi
+
+cat <<EOF
+Claude-Code extension surface for {{ project_name }}: ${rules_count} path-scoped rules + ${skills_count} skills + ${agents_count} subagent profiles + ${hooks_count} hooks loaded.
+Heavy-lane triggers (full §1 pipeline; canonical SoT .claude/path_registry.yaml groups.heavy_lane): {{ heavy_lane_paths_shell_summary }}.
+Review mode: {{ review_mode }} — no auto-fix, no auto-merge. See docs/DEV_PIPELINE_STANDARD.md §0 and docs/MEMSTORE_HANDOFF.md.
+
+CANONICAL WORK-TRACKING: TODO.md is the source of truth for "what's left to do" (git-tracked). Memory entries are rationale/constraints, NOT task state. ALWAYS consult TODO.md before any next-work decision.
+
+TODO.md open H2 sections (auto-extracted; cap 20; ✅ / ⚰️ / DONE / ARCHIVED / CLOSED filtered out):
+${todo_open}
+EOF

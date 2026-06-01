@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# PreToolUse(Bash) — block subset pytest selectors when the working tree
+# has uncommitted changes inside a critical subset (see
+# {{ critical_subset_paths_regex }} below). Some projects have
+# module-shadow or import-order pitfalls that make subset runs
+# unrepresentative of CI; the authoritative gate is the whole-suite
+# + order-flip.
+#
+# Allow with: CLAUDE_ALLOW_SUBSET=1
+# Authoritative external: https://code.claude.com/docs/en/hooks-guide
+# Project SoT: .claude/rules/heavy-lane.md + docs/DEV_PIPELINE_STANDARD.md.
+#
+# Project: {{ project_name }}
+set -euo pipefail
+
+if [ "${CLAUDE_ALLOW_SUBSET:-}" = "1" ]; then
+  exit 0
+fi
+
+input="$(cat)"
+cmd="$(echo "$input" | jq -r '.tool_input.command // empty')"
+
+# Match pytest invocations: `pytest`, `python -m pytest`, `.venv/bin/python -m pytest`.
+if ! echo "$cmd" | grep -qE '(^|[^a-zA-Z0-9_-])(\.venv/bin/)?python[0-9.]*[[:space:]]+-m[[:space:]]+pytest|(^|[^a-zA-Z0-9_-])pytest([[:space:]]|$)'; then
+  exit 0
+fi
+
+# Detect a subset selector: -k, --lf/--ff, or a positional .py path.
+is_subset=0
+if echo "$cmd" | grep -qE '[[:space:]](-k|-K)[[:space:]]'; then
+  is_subset=1
+fi
+if echo "$cmd" | grep -qE '[[:space:]](--lf|--ff|--last-failed|--failed-first)([[:space:]]|$)'; then
+  is_subset=1
+fi
+if echo "$cmd" | grep -qE '[[:space:]][a-zA-Z][a-zA-Z0-9_/.-]+\.py(::[a-zA-Z_0-9]+)?([[:space:]]|$)'; then
+  is_subset=1
+fi
+
+if [ "$is_subset" -eq 0 ]; then
+  exit 0
+fi
+
+# Subset detected — does the working tree have changes inside the
+# critical-subset prefix list? The regex is generated from the
+# project's PROJECT_PROFILE.yaml ``critical_paths`` (and
+# ``deployment_specific_paths``) so this list reflects what the
+# project itself flags as critical.
+critical_regex='{{ critical_subset_paths_regex }}'
+if ! git -C "$(pwd)" diff --name-only HEAD 2>/dev/null | grep -qE "$critical_regex"; then
+  exit 0
+fi
+
+echo "BLOCK: subset pytest selector + uncommitted changes under a critical-subset path." >&2
+echo "Subset pytest runs can be unrepresentative of CI for projects with module-import-order or package-shadow pitfalls." >&2
+echo "The authoritative gate is the whole-suite + order-flip." >&2
+echo "  Run the whole suite:   python -m pytest -p no:xdist -q" >&2
+echo "  Or the fast parallel:  python -m pytest -n auto --dist loadgroup -q" >&2
+echo "If you've already confirmed CI green and need a one-off subset run: set CLAUDE_ALLOW_SUBSET=1 in the env." >&2
+echo "See .claude/rules/heavy-lane.md." >&2
+exit 2

@@ -1,0 +1,34 @@
+# Canonical Path Registry for {{ project_name }}
+#
+# Single source of truth for the path lists consumed by the Claude
+# review workflow filter, the heavy-lane rule frontmatter/body, the PR
+# template's risk-paths checklist, and the session-start hook's
+# summary. The dev-system manifest linter (scripts/check_manifests.py)
+# reds CI on drift.
+#
+# Edit by re-running bootstrap_project.py with an updated
+# PROJECT_PROFILE.yaml — never hand-edit individual consumers and then
+# this file in isolation, or the consumer-sync tests will red.
+
+schema_version: 1
+
+groups:
+
+  heavy_lane:
+    description: |
+      Paths that trigger the full §1 pipeline of
+      docs/DEV_PIPELINE_STANDARD.md. Adding a path here makes it
+      heavy-lane everywhere; removing it strips heavy-lane discipline
+      from every consumer artifact at once.
+    paths:
+{{ heavy_lane_paths_yaml_with_why }}
+
+  claude_system:
+    description: |
+      Extension-layer paths whose changes mutate Claude's own behavior
+      surface. Reviewed under the same workflow as heavy_lane but not
+      part of the heavy-lane risk discipline (no capital-gate /
+      data-acceptance invariant). The workflow filter is exactly
+      heavy_lane ∪ claude_system.
+    paths:
+{{ claude_system_paths_yaml_with_why }}
