@@ -1,0 +1,59 @@
+# Profile seed: generic-python — D0e
+#
+# Minimal Python project profile. No deployment automation, no
+# database, no project-specific path globs. Use as a starting point
+# for a small Python library / CLI tool / utility repo.
+
+schema_version: 1
+
+project_name: my-project
+language: python
+deployment: none
+database: none
+
+# Critical paths: minimal set covering the source tree, tests, and
+# the build manifest. Consumers should expand to match their layout.
+critical_paths:
+  - "src/**"
+  - "tests/**"
+  - "pyproject.toml"
+
+deployment_specific_paths: []
+
+claude_system_paths:
+  - ".claude/rules/**"
+  - ".claude/skills/**"
+  - ".claude/agents/**"
+  - ".claude/hooks/**"
+  - ".claude/settings.json"
+  - ".github/workflows/**"
+
+security_sensitive_paths:
+  - ".github/workflows/**"
+  - ".gitleaks.toml"
+  - ".gitleaksignore"
+  - ".pre-commit-config.yaml"
+  - "pyproject.toml"
+  - "requirements*.txt"
+
+forbidden_assumptions:
+  - docker
+  - auto-merge
+  - auto-fix
+
+memory_policy:
+  local_memory_limit_bytes: 24400
+  memory_boundary_doc: true
+  api_memstores_enabled: false
+  dev_memstore_id: ""
+  agent_memstore_id: ""
+
+review_mode: claude-review-only
+
+output_paths:
+  operator_reports: ".operator/reports/claude/"
+
+home_session_path: "~/.claude/projects/-Users-USERNAME-my-project/"
+python_version: "3.11"
+test_command: "python -m pytest -q"
+gitleaks_version: "8.30.1"

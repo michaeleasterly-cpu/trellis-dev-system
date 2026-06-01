@@ -1,0 +1,63 @@
+# Profile seed: python-postgres — D0e
+#
+# Postgres-backed Python project. Adds migrations + DB-handling paths
+# to the heavy-lane glob and security-sensitive paths. No real DB URL
+# is included; the consumer supplies their own .env (gitignored).
+
+schema_version: 1
+
+project_name: my-postgres-project
+language: python
+deployment: none
+database: postgres
+
+critical_paths:
+  - "src/**"
+  - "tests/**"
+  - "migrations/**"
+  - "pyproject.toml"
+  - "src/db.py"
+
+deployment_specific_paths: []
+
+claude_system_paths:
+  - ".claude/rules/**"
+  - ".claude/skills/**"
+  - ".claude/agents/**"
+  - ".claude/hooks/**"
+  - ".claude/settings.json"
+  - ".github/workflows/**"
+
+security_sensitive_paths:
+  - ".github/workflows/**"
+  - ".gitleaks.toml"
+  - ".gitleaksignore"
+  - ".pre-commit-config.yaml"
+  - "pyproject.toml"
+  - "requirements*.txt"
+  - "src/db.py"
+  - "migrations/**"
+  - ".env.example"
+
+forbidden_assumptions:
+  - docker
+  - auto-merge
+  - auto-fix
+  - "raw database URLs in tracked files"
+
+memory_policy:
+  local_memory_limit_bytes: 24400
+  memory_boundary_doc: true
+  api_memstores_enabled: false
+  dev_memstore_id: ""
+  agent_memstore_id: ""
+
+review_mode: claude-review-only
+
+output_paths:
+  operator_reports: ".operator/reports/claude/"
+
+home_session_path: "~/.claude/projects/-Users-USERNAME-my-postgres-project/"
+python_version: "3.11"
+test_command: "python -m pytest -q"
+gitleaks_version: "8.30.1"

@@ -1,0 +1,150 @@
+name: Claude Review — Heavy Lane
+
+# Path-filtered Claude Code Action review for the heavy-lane paths
+# enumerated in docs/DEV_PIPELINE_STANDARD.md §0 and pinned in
+# .claude/path_registry.yaml. Review-only / comment-only — the action
+# is NEVER granted repo-write permission, and the prompt explicitly
+# prohibits code changes, auto-fix, auto-merge, deployment, and
+# memory writes.
+#
+# Adoption: the action requires ANTHROPIC_API_KEY in repo secrets.
+# Without the secret, the workflow runs but the action step errors
+# out and the rest of the heavy-lane discipline (manual review)
+# takes over. See docs/DEV_PIPELINE_STANDARD.md §1 step 7.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      # ─────────────────────────────────────────────────────────────
+      # SoT is .claude/path_registry.yaml. The list below MUST equal
+      # exactly: groups.heavy_lane.paths ∪ groups.claude_system.paths
+      # Adding a path in only one of (registry, this filter) reds CI
+      # via devsystem/scripts/check_manifests.py.
+      # ─────────────────────────────────────────────────────────────
+{{ workflow_paths_yaml }}
+
+# Cancel an older in-flight review when a new commit lands on the
+# same PR branch.
+concurrency:
+  group: claude-review-heavy-lane-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  claude-review:
+    name: Claude review (heavy-lane paths)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # Minimal permissions block. Write access to repo contents is
+    # NOT granted — the action is a review-only / comment-only
+    # first-pass reviewer. If a future use-case needs commits or
+    # patches, that is a separate workflow with operator-explicit
+    # authorization.
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository (PR head, shallow)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Claude Code Action review (review-only / no commits)
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Restrict tool surface to commenting + read-only. No shell
+          # mutation, no file write, no git operations, no deploy
+          # commands. The action's default tools are filtered down to
+          # this allowlist; absence of repo-write permission on the
+          # permissions block is the second layer of defense.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(cat:*),Bash(grep:*),Bash(find:*),Bash(ls:*)"
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            HEAD SHA: ${{ github.event.pull_request.head.sha }}
+
+            # You are a fresh-context heavy-lane first-pass reviewer for {{ project_name }}
+
+            This PR touches at least one path enumerated under the
+            ``heavy_lane`` or ``claude_system`` groups in
+            `.claude/path_registry.yaml`.
+
+            ## Your job — REVIEW ONLY
+
+            Read the diff and post a verdict comment. **You are
+            review/comment-only**: do NOT change code, do NOT push
+            commits, do NOT propose patches, do NOT auto-fix, do NOT
+            auto-merge, do NOT recommend deployment-relevant actions,
+            do NOT write to Anthropic memory or memstores, do NOT
+            request any tool other than the commenting tools
+            allowlisted above. Review mode for this project: {{ review_mode }}.
+
+            ## What to verify (in order)
+
+            1. **Lane discipline** —
+               `docs/DEV_PIPELINE_STANDARD.md` §0 + §1 mandate the
+               full pipeline for heavy-lane paths. Has the PR body
+               declared its lane (the PR template requires this)? Is
+               there a spec reference if the change is non-trivial?
+
+            2. **Heavy-lane rule compliance** — read
+               `.claude/rules/heavy-lane.md`. Does the change satisfy
+               the listed steps (brainstorm, expert-harden, spec,
+               plan, subagent-driven execution, split-review)?
+
+            3. **Path-specific rules** — read each rule whose
+               `paths:` frontmatter matches the touched files (e.g.
+               `.claude/rules/security-guidance.md` for the
+               security-sensitive surface, plus any other rules the
+               project has installed). Cite each rule invariant that
+               the PR satisfies OR violates with file:line evidence.
+
+            4. **Test coverage proportionate to risk** — heavy-lane
+               changes require tests at the changed surface, not
+               just downstream.
+
+            5. **CI gate honesty** — if the PR description claims CI
+               green, verify with `gh pr checks ${{ github.event.pull_request.number }}`.
+               Read the `statusCheckRollup` conclusion, NOT
+               `mergeStateStatus`.
+
+            ## Verdict (mandatory final comment)
+
+            Post **one** final comment containing a single line of:
+
+            - `VERDICT: PASS` — change satisfies the heavy-lane
+              discipline; operator should still apply their own
+              spot-check before merge.
+            - `VERDICT: REQUEST_CHANGES` — at least one rule
+              invariant is violated. Cite each violation with
+              file:line + the rule it violates.
+            - `VERDICT: NEEDS_OPERATOR_REVIEW` — the change is
+              outside what a first-pass automated reviewer can verify.
+
+            ## What you MUST NOT do
+
+            - Do NOT make code changes, file edits, or commits.
+            - Do NOT push to the branch or open a PR.
+            - Do NOT call any tool not in the allowlist above.
+            - Do NOT auto-merge, auto-fix, or auto-rebase.
+            - Do NOT recommend deployment-relevant actions, run
+              ``docker``, run ``railway up``, or any deploy command.
+            - Do NOT write to Anthropic API memstores or Claude
+              memory.
+            - Do NOT touch `.env`, secrets, or any tracked file
+              outside the diff under review.
+
+            ## Acceptance of authority
+
+            This is a FIRST-PASS automated reviewer. The operator
+            remains the final gate. A `VERDICT: PASS` is necessary
+            but not sufficient for merge; a `VERDICT: REQUEST_CHANGES`
+            blocks merge until the listed issues are resolved or the
+            operator explicitly overrides.

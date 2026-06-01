@@ -117,6 +117,14 @@ def _strip_inline_comment(value: str) -> str:
 
 def _parse_scalar(rest: str) -> object:
     rest = rest.strip()
+    # Inline empty collections — the only flow-style YAML we accept.
+    # Without this, ``deployment_specific_paths: []`` would parse to
+    # the literal string ``"[]"`` and downstream iteration would yield
+    # the two characters ``[`` and ``]`` as bogus list items.
+    if rest == "[]":
+        return []
+    if rest == "{}":
+        return {}
     if (rest.startswith('"') and rest.endswith('"')) or (
         rest.startswith("'") and rest.endswith("'")
     ):
@@ -442,6 +450,18 @@ def _flat_substitutions(profile: dict) -> dict[str, str]:
         # Shell-safe placeholders for hooks.
         "heavy_lane_paths_shell_summary": _shell_summary(heavy_paths),
         "critical_subset_paths_regex": _critical_subset_regex(heavy_paths),
+        # D0e — workflow paths filter (union of heavy_lane +
+        # claude_system at workflow indent 6) and PR-template
+        # heavy-lane checkbox block.
+        "workflow_paths_yaml": _frontmatter_paths_yaml(
+            heavy_paths + _just_paths(claude_system_entries), 6
+        ),
+        "heavy_lane_paths_checklist": _checklist_paths(heavy_paths),
+        # D0e — CI workflow knobs.
+        "python_version": str(profile.get("python_version", "3.11")),
+        "test_command": str(
+            profile.get("test_command", "python -m pytest -q")
+        ),
         # Memstore enabled-block placeholders (only meaningful when
         # api_memstores_enabled is true).
         "dev_memstore_id": str(mem.get("dev_memstore_id", "") or ""),
@@ -451,6 +471,13 @@ def _flat_substitutions(profile: dict) -> dict[str, str]:
         ),
     }
     return flat
+
+
+def _checklist_paths(items: list[str]) -> str:
+    """Render the PR template's heavy-lane checkbox block."""
+    if not items:
+        return "- [ ] (no heavy_lane paths configured for this profile)"
+    return "\n".join(f"- [ ] `{p}`" for p in items)
 
 
 _UNRESOLVED_PATTERN = re.compile(r"\{\{\s*[A-Za-z0-9_]+\s*\}\}")
@@ -556,6 +583,21 @@ def _plan_claude_surface(
             )
         )
 
+    # D0e — .claude/settings.json (template; renders into the
+    # consumer's .claude/settings.json wiring the portable hooks
+    # into Claude Code's hook events).
+    settings_template = _DEVSYSTEM_CLAUDE / "settings.json.template"
+    if settings_template.is_file():
+        plan.append(
+            (
+                claude_root / "settings.json",
+                render_template(
+                    settings_template.read_text(encoding="utf-8"), profile,
+                ),
+                False,
+            )
+        )
+
     rules_dir = _DEVSYSTEM_CLAUDE / "rules"
     if rules_dir.is_dir():
         for template in sorted(rules_dir.glob("*.md.template")):
@@ -620,20 +662,211 @@ def _plan_claude_surface(
     return plan
 
 
+# ─────────────────────────────────────────────────────────────────────
+# D0e — GitHub workflows + PR template render plan
+# ─────────────────────────────────────────────────────────────────────
+
+_DEVSYSTEM_GITHUB = _DEVSYSTEM_ROOT / "devsystem" / "github"
+
+
+def _plan_github_surface(
+    profile: dict, target_dir: Path,
+) -> list[tuple[Path, str, bool]]:
+    """Return ``(out_path, content, executable)`` triples for the
+    GitHub workflows + PR template.
+
+      * ``devsystem/github/workflows/*.yml`` → verbatim copy into
+        ``<target>/.github/workflows/<name>.yml``.
+      * ``devsystem/github/workflows/*.yml.template`` → rendered.
+      * ``devsystem/github/pull_request_template.md.template`` →
+        ``<target>/.github/pull_request_template.md``.
+    """
+    plan: list[tuple[Path, str, bool]] = []
+    github_root = target_dir / ".github"
+    if not _DEVSYSTEM_GITHUB.is_dir():
+        return plan
+
+    workflows_dir = _DEVSYSTEM_GITHUB / "workflows"
+    if workflows_dir.is_dir():
+        for verbatim in sorted(workflows_dir.glob("*.yml")):
+            plan.append(
+                (
+                    github_root / "workflows" / verbatim.name,
+                    verbatim.read_text(encoding="utf-8"),
+                    False,
+                )
+            )
+        for template in sorted(workflows_dir.glob("*.yml.template")):
+            rendered_name = template.name[: -len(".template")]
+            plan.append(
+                (
+                    github_root / "workflows" / rendered_name,
+                    render_template(
+                        template.read_text(encoding="utf-8"), profile,
+                    ),
+                    False,
+                )
+            )
+
+    pr_template = _DEVSYSTEM_GITHUB / "pull_request_template.md.template"
+    if pr_template.is_file():
+        plan.append(
+            (
+                github_root / "pull_request_template.md",
+                render_template(
+                    pr_template.read_text(encoding="utf-8"), profile,
+                ),
+                False,
+            )
+        )
+    return plan
+
+
+# ─────────────────────────────────────────────────────────────────────
+# D0e — profile-seed loader + merge
+# ─────────────────────────────────────────────────────────────────────
+
+_TEMPLATES_DIR = _DEVSYSTEM_ROOT / "templates"
+
+
+def _dump_scalar_yaml(value: object) -> str:
+    """Render a scalar value as it should appear after ``key: ``.
+
+    Always-quote strings — the parser tolerates quoted strings
+    everywhere, and quoting them prevents round-trip drift where
+    ``python_version: 3.11`` parses back as a float, or where a
+    string starting with ``~`` parses as a YAML anchor.
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if value is None:
+        return "null"
+    if isinstance(value, str):
+        # Escape any embedded double quotes.
+        escaped = value.replace('\\', '\\\\').replace('"', '\\"')
+        return f'"{escaped}"'
+    raise ValueError(
+        f"_dump_scalar_yaml: unsupported scalar type {type(value)}"
+    )
+
+
+def _dump_profile_yaml(profile: dict) -> str:
+    """Serialize the merged profile back into PROJECT_PROFILE.yaml
+    shape. Stdlib-only; supports the same subset the parser supports
+    (top-level scalars, lists of strings or {path, why} mappings, and
+    one level of nested objects)."""
+    lines: list[str] = []
+    for key, value in profile.items():
+        if isinstance(value, list):
+            if not value:
+                lines.append(f"{key}: []")
+                continue
+            lines.append(f"{key}:")
+            for item in value:
+                if isinstance(item, dict):
+                    keys = list(item.keys())
+                    if not keys:
+                        continue
+                    first_key = keys[0]
+                    lines.append(
+                        f"  - {first_key}: {_dump_scalar_yaml(item[first_key])}"
+                    )
+                    for k in keys[1:]:
+                        lines.append(
+                            f"    {k}: {_dump_scalar_yaml(item[k])}"
+                        )
+                else:
+                    lines.append(f"  - {_dump_scalar_yaml(item)}")
+        elif isinstance(value, dict):
+            lines.append(f"{key}:")
+            for sub_key, sub_val in value.items():
+                lines.append(
+                    f"  {sub_key}: {_dump_scalar_yaml(sub_val)}"
+                )
+        else:
+            lines.append(f"{key}: {_dump_scalar_yaml(value)}")
+    return "\n".join(lines) + "\n"
+
+
+def _list_known_profiles() -> list[str]:
+    if not _TEMPLATES_DIR.is_dir():
+        return []
+    return sorted(
+        d.name for d in _TEMPLATES_DIR.iterdir()
+        if d.is_dir() and (d / "PROJECT_PROFILE.yaml").is_file()
+    )
+
+
+def _load_profile_seed(name: str) -> dict:
+    seed_path = _TEMPLATES_DIR / name / "PROJECT_PROFILE.yaml"
+    if not seed_path.is_file():
+        known = _list_known_profiles()
+        raise SystemExit(
+            f"unknown profile {name!r}; known: {known}"
+        )
+    return parse_yaml(seed_path.read_text(encoding="utf-8"))
+
+
+def _merge_profiles(seed: dict, overlay: dict) -> dict:
+    """Overlay scalar / list / object values onto the seed.
+
+    Rules:
+      * Scalars in overlay replace seed scalars.
+      * Lists in overlay replace seed lists in full (no merge of
+        items).
+      * Nested objects (e.g. ``memory_policy``) are shallow-merged:
+        overlay keys replace seed keys at one level.
+    """
+    out = dict(seed)
+    for key, val in overlay.items():
+        if (
+            isinstance(val, dict)
+            and isinstance(out.get(key), dict)
+        ):
+            merged = dict(out[key])
+            merged.update(val)
+            out[key] = merged
+        else:
+            out[key] = val
+    return out
+
+
 def bootstrap(
     *,
-    profile_file: Path,
+    profile_name: str | None,
+    profile_file: Path | None,
     target_dir: Path,
     dry_run: bool,
     force: bool,
 ) -> int:
-    if not profile_file.is_file():
-        raise SystemExit(f"profile file not found: {profile_file}")
-    profile_text = profile_file.read_text(encoding="utf-8")
-    try:
-        profile = parse_yaml(profile_text)
-    except ValueError as exc:
-        raise SystemExit(f"PROJECT_PROFILE.yaml parse error: {exc}") from exc
+    """D0e — bootstrap entry point.
+
+    Profile resolution:
+      * ``--profile NAME`` alone        → load templates/<NAME>/PROJECT_PROFILE.yaml
+      * ``--profile-file PATH`` alone   → load PATH
+      * Both                            → load NAME seed first; overlay PATH values
+      * Neither                         → SystemExit with usage hint
+    """
+    if profile_name is None and profile_file is None:
+        raise SystemExit(
+            "must supply --profile <name> or --profile-file <path>"
+        )
+    seed: dict = {}
+    if profile_name is not None:
+        seed = _load_profile_seed(profile_name)
+    overlay: dict = {}
+    if profile_file is not None:
+        if not profile_file.is_file():
+            raise SystemExit(f"profile file not found: {profile_file}")
+        try:
+            overlay = parse_yaml(profile_file.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            raise SystemExit(
+                f"PROJECT_PROFILE.yaml parse error: {exc}"
+            ) from exc
+    profile = _merge_profiles(seed, overlay)
     _profile_assertions(profile)
 
     target_dir = target_dir.resolve()
@@ -663,9 +896,22 @@ def bootstrap(
 
     # D0d — also plan the Claude-surface artifacts.
     claude_planned = _plan_claude_surface(profile, target_dir)
+    # D0e — workflows + PR template.
+    github_planned = _plan_github_surface(profile, target_dir)
 
-    # Copy PROJECT_PROFILE.yaml verbatim so audit can reload it.
+    # Copy the profile that audit_project.py will read on the next
+    # run. Two cases:
+    #   * profile_file only            → byte-equal copy (preserves
+    #                                    comments, ordering, quoting)
+    #   * --profile [+ profile_file]   → dump the merged in-memory
+    #                                    profile (no source-file
+    #                                    fidelity is possible across
+    #                                    the merge)
     profile_out = target_dir / "PROJECT_PROFILE.yaml"
+    if profile_name is None and profile_file is not None:
+        effective_profile_yaml = profile_file.read_text(encoding="utf-8")
+    else:
+        effective_profile_yaml = _dump_profile_yaml(profile)
 
     if dry_run:
         print(f"[dry-run] target: {target_dir}")
@@ -674,6 +920,8 @@ def bootstrap(
         for out_path, _, exe in claude_planned:
             tag = "(+x)" if exe else "   "
             print(f"[dry-run] would write {tag}: {out_path}")
+        for out_path, _, _exe in github_planned:
+            print(f"[dry-run] would write    : {out_path}")
         print(f"[dry-run] would write: {profile_out}")
         return 0
 
@@ -688,6 +936,22 @@ def bootstrap(
         if exe:
             mode = out_path.stat().st_mode | 0o111
             out_path.chmod(mode)
+    for out_path, content, exe in github_planned:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(content, encoding="utf-8")
+        if exe:
+            mode = out_path.stat().st_mode | 0o111
+            out_path.chmod(mode)
+    profile_out.write_text(effective_profile_yaml, encoding="utf-8")
+
+    n_total = len(docs_planned) + len(claude_planned) + len(github_planned)
+    print(
+        f"bootstrap_project: rendered {len(docs_planned)} doc(s) + "
+        f"{len(claude_planned)} Claude-surface + "
+        f"{len(github_planned)} GitHub-surface artifact(s) "
+        f"({n_total} total) into {target_dir}"
+    )
+    return 0
     shutil.copyfile(profile_file, profile_out)
 
     print(
@@ -712,8 +976,19 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--profile",
+        default=None,
+        help=(
+            "Named profile seed to load (e.g. ``generic-python``, "
+            "``python-railway``, ``python-postgres``, "
+            "``fintech-research``). When used alone, the seed becomes "
+            "the project profile. When combined with --profile-file, "
+            "the explicit file values overlay the seed."
+        ),
+    )
+    parser.add_argument(
         "--profile-file",
-        required=True,
+        default=None,
         type=Path,
         help="Path to PROJECT_PROFILE.yaml for the consumer project.",
     )
@@ -735,6 +1010,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     return bootstrap(
+        profile_name=args.profile,
         profile_file=args.profile_file,
         target_dir=args.target_dir,
         dry_run=args.dry_run,

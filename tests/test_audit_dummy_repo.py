@@ -119,3 +119,46 @@ def test_audit_detects_missing_claude_artifact(tmp_path: Path) -> None:
     proc = _audit(target)
     assert proc.returncode == 1
     assert "spec-reviewer.md" in proc.stderr
+
+
+# ─────────────────────────────────────────────────────────────────────
+# D0e — GitHub-surface drift detection
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_audit_detects_workflow_drift(tmp_path: Path) -> None:
+    target = tmp_path / "dummy"
+    _bootstrap_into(target)
+    wf = target / ".github" / "workflows" / "claude-review-heavy-lane.yml"
+    wf.write_text(
+        wf.read_text(encoding="utf-8") + "\n# operator-injected drift\n",
+        encoding="utf-8",
+    )
+    proc = _audit(target)
+    assert proc.returncode == 1
+    assert "claude-review-heavy-lane.yml" in proc.stderr
+    assert "drift" in proc.stderr.lower()
+
+
+def test_audit_detects_pr_template_drift(tmp_path: Path) -> None:
+    target = tmp_path / "dummy"
+    _bootstrap_into(target)
+    pr = target / ".github" / "pull_request_template.md"
+    pr.write_text(
+        pr.read_text(encoding="utf-8") + "\n<!-- drift -->\n",
+        encoding="utf-8",
+    )
+    proc = _audit(target)
+    assert proc.returncode == 1
+    assert "pull_request_template.md" in proc.stderr
+
+
+def test_audit_detects_settings_json_drift(tmp_path: Path) -> None:
+    target = tmp_path / "dummy"
+    _bootstrap_into(target)
+    settings = target / ".claude" / "settings.json"
+    text = settings.read_text(encoding="utf-8")
+    settings.write_text(text.replace("PreToolUse", "PreToolUseDRIFT"), encoding="utf-8")
+    proc = _audit(target)
+    assert proc.returncode == 1
+    assert "settings.json" in proc.stderr

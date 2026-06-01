@@ -1,0 +1,84 @@
+# Profile seed: fintech-research — D0e
+#
+# Fintech research / trading platform shape. Mirrors the structural
+# concerns the donor repo discovered without naming any specific
+# vendor, engine, or product. The path globs use generic names
+# (src/risk, src/data_quality, src/providers, src/order_management,
+# scripts/ops.py, migrations/) so a consumer can rename to their own
+# layout. Railway + Postgres are the default deployment + database
+# combination because that's the substrate most fintech-research
+# projects end up on.
+
+schema_version: 1
+
+project_name: my-fintech-research-project
+language: python
+deployment: railway
+database: postgres
+
+# Critical paths cover the live-money-adjacent surfaces by name
+# pattern. The donor repo's lesson was that risk, data acceptance,
+# provider/feed lifecycle, and the operator-on-demand stage registry
+# need full pipeline discipline — not the trading code itself.
+critical_paths:
+  - "src/risk/**"
+  - "src/data_quality/**"
+  - "src/providers.py"
+  - "src/order_management/**"
+  - "src/self_heal/**"
+  - "src/audit_heal/**"
+  - "scripts/ops.py"
+  - "migrations/**"
+
+deployment_specific_paths:
+  - "railway.json"
+  - "railpack.toml"
+  - "Procfile"
+
+claude_system_paths:
+  - ".claude/rules/**"
+  - ".claude/skills/**"
+  - ".claude/agents/**"
+  - ".claude/hooks/**"
+  - ".claude/settings.json"
+  - ".github/workflows/**"
+
+security_sensitive_paths:
+  - ".github/workflows/**"
+  - ".gitleaks.toml"
+  - ".gitleaksignore"
+  - ".pre-commit-config.yaml"
+  - "pyproject.toml"
+  - "requirements*.txt"
+  - "src/db.py"
+  - "src/providers.py"
+  - "src/order_management/**"
+  - "migrations/**"
+  - "railway.json"
+  - "railpack.toml"
+  - "Procfile"
+  - ".env.example"
+
+forbidden_assumptions:
+  - docker
+  - "railway up unless explicitly operator-approved"
+  - auto-merge
+  - auto-fix
+  - "raw broker / market-data credentials in tracked files"
+
+memory_policy:
+  local_memory_limit_bytes: 24400
+  memory_boundary_doc: true
+  api_memstores_enabled: false
+  dev_memstore_id: ""
+  agent_memstore_id: ""
+
+review_mode: claude-review-only
+
+output_paths:
+  operator_reports: ".operator/reports/claude/"
+
+home_session_path: "~/.claude/projects/-Users-USERNAME-my-fintech-research-project/"
+python_version: "3.11"
+test_command: "python -m pytest -p no:xdist -q"
+gitleaks_version: "8.30.1"

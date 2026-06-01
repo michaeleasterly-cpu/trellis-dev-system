@@ -14,34 +14,54 @@ What it is **not**:
 - It does not assume Docker.
 - It does not run deploys. Railway is a supported deployment **profile**, but the tool itself never invokes `railway up`.
 
-## Status: D0a skeleton only
-
-D0a is the **skeleton-only** stage of the extraction sequence planned in the donor repo's `D0` plan:
+## Status: D0e — workflows + PR template + profile seeds
 
 | Stage | Scope | Status |
 |---|---|---|
 | D0a | Repo skeleton: README + LICENSE + PROJECT_PROFILE example + JSON Schema + empty `devsystem/` and `templates/` trees + minimal CI | merged (PR #1) |
 | D0b | Portable docs as templates under `devsystem/docs/` | merged (PR #2) |
 | D0c | Portable scripts + bootstrap renderer + sentinel tests | merged (PR #3) |
-| **D0d** | Portable Claude surface: `path_registry.yaml.template`, `heavy-lane`/`security-guidance` rule templates, `security-review` skill (verbatim), `block-git-checkout` hook (verbatim) + `session-start` / `block-pytest-subset-when-critical` hook templates, `spec-reviewer` + `code-quality-reviewer` agent templates. Bootstrap + audit + check_manifests extended; `check_manifests.py --target-dir` validates a consumer's rendered `.claude/` surface. | **this PR** |
-| D0d | Portable rules + skills + hooks + agents | deferred |
-| D0e | Workflows + PR template + profile seeds | deferred |
+| D0d | Portable Claude surface: `path_registry.yaml.template`, `heavy-lane`/`security-guidance` rule templates, `security-review` skill (verbatim), portable hooks + agent templates; `check_manifests.py --target-dir` validates a consumer's rendered `.claude/` surface. | merged (PR #4) |
+| **D0e** | GitHub workflow templates (`claude-review-heavy-lane.yml.template` review-only, `secret-scan.yml` verbatim, `ci.yml.template` generic Python), `pull_request_template.md.template`, portable `.claude/settings.json.template`, and four profile seeds (`generic-python`, `python-railway`, `python-postgres`, `fintech-research`). Bootstrap gains `--profile <name>`; audit + check_manifests cover the new GitHub surface. | **this PR** |
 | D0f | Donor repo adopts the dev system (round-trip validation) | deferred until 2nd consumer |
 
-No template content has been extracted yet — the `devsystem/` and `templates/` trees are intentionally empty (only `.gitkeep` placeholders). Future stages fill them in.
+After D0e, a consumer can bootstrap a complete repo skeleton from a single named profile — docs, `.claude/` surface + settings, GitHub workflows + PR template — and re-run audit/check_manifests at any time to detect drift.
 
-## How a future project will use it (after D0c)
+## How a future project uses it
+
+Pick a named profile seed and bootstrap into a fresh directory:
 
 ```bash
-# Author your PROJECT_PROFILE.yaml at the root of your new repo
-cp /path/to/packetvoid-dev-system/PROJECT_PROFILE.example.yaml ./PROJECT_PROFILE.yaml
-$EDITOR PROJECT_PROFILE.yaml
-
-# Bootstrap (D0c+ — not implemented in D0a)
 python /path/to/packetvoid-dev-system/devsystem/scripts/bootstrap_project.py \
     --profile generic-python \
+    --target-dir ./my-new-repo
+```
+
+Or override individual values with your own profile file:
+
+```bash
+cp /path/to/packetvoid-dev-system/PROJECT_PROFILE.example.yaml ./PROJECT_PROFILE.yaml
+$EDITOR PROJECT_PROFILE.yaml
+python /path/to/packetvoid-dev-system/devsystem/scripts/bootstrap_project.py \
+    --profile python-railway \
     --profile-file PROJECT_PROFILE.yaml \
-    --target-dir .
+    --target-dir ./my-new-repo
+```
+
+Available seeds: `generic-python`, `python-railway`, `python-postgres`, `fintech-research`.
+
+Bootstrapping produces:
+
+- `docs/` — five portable docs (`DEV_PIPELINE_STANDARD`, `SECURITY_GUIDANCE`, `MEMORY_MAINTENANCE`, `MEMSTORE_HANDOFF`, `CLAUDE_SESSION_OBSERVABILITY`).
+- `.claude/` — `path_registry.yaml`, `rules/`, `skills/security-review/`, `hooks/`, `agents/`, `settings.json` wiring the hooks.
+- `.github/workflows/` — `ci.yml`, `secret-scan.yml`, `claude-review-heavy-lane.yml` with its `paths` filter pinned to the registry.
+- `.github/pull_request_template.md` — lane checkboxes + heavy-lane-path checklist mirroring the registry.
+
+Audit at any time:
+
+```bash
+python /path/to/packetvoid-dev-system/devsystem/scripts/audit_project.py --target-dir ./my-new-repo
+python /path/to/packetvoid-dev-system/devsystem/scripts/check_manifests.py --target-dir ./my-new-repo
 ```
 
 ## Memory boundary

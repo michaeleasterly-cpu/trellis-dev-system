@@ -197,6 +197,7 @@ def test_no_donor_repo_identifier_leaks_into_dummy(tmp_path: Path) -> None:
 
 _EXPECTED_CLAUDE_TREE = (
     ".claude/path_registry.yaml",
+    ".claude/settings.json",
     ".claude/rules/heavy-lane.md",
     ".claude/rules/security-guidance.md",
     ".claude/skills/security-review/SKILL.md",
@@ -205,6 +206,13 @@ _EXPECTED_CLAUDE_TREE = (
     ".claude/hooks/block-pytest-subset-when-critical.sh",
     ".claude/agents/spec-reviewer.md",
     ".claude/agents/code-quality-reviewer.md",
+)
+
+_EXPECTED_GITHUB_TREE = (
+    ".github/workflows/ci.yml",
+    ".github/workflows/secret-scan.yml",
+    ".github/workflows/claude-review-heavy-lane.yml",
+    ".github/pull_request_template.md",
 )
 
 
@@ -294,6 +302,121 @@ def test_project_profile_yaml_copied_into_target(tmp_path: Path) -> None:
     assert (
         copied.read_bytes() == _PROFILE.read_bytes()
     ), "PROJECT_PROFILE.yaml copied differs from source"
+
+
+def test_bootstrap_renders_github_surface(tmp_path: Path) -> None:
+    """D0e — workflow templates + PR template are rendered."""
+    target = tmp_path / "dummy"
+    _run_bootstrap(target)
+    for rel in _EXPECTED_GITHUB_TREE:
+        assert (target / rel).is_file(), (
+            f"missing rendered GitHub-surface artifact: {rel}"
+        )
+
+
+def test_settings_json_parses_and_references_rendered_hooks(
+    tmp_path: Path,
+) -> None:
+    """D0e — .claude/settings.json is valid JSON and every hook script
+    it references exists in the rendered tree."""
+    import json
+    target = tmp_path / "dummy"
+    _run_bootstrap(target)
+    settings = target / ".claude" / "settings.json"
+    assert settings.is_file()
+    data = json.loads(settings.read_text(encoding="utf-8"))
+    assert "hooks" in data
+    hooks_root = target / ".claude"
+    referenced: list[str] = []
+    for event, entries in data["hooks"].items():
+        for entry in entries:
+            for hook in entry.get("hooks", []) or []:
+                cmd = hook["command"]
+                marker = "$CLAUDE_PROJECT_DIR/"
+                assert marker in cmd, f"{event} cmd missing marker: {cmd}"
+                referenced.append(cmd.split(marker, 1)[1])
+    for rel in referenced:
+        assert (hooks_root.parent / rel).is_file(), (
+            f"settings.json references missing hook: {rel}"
+        )
+
+
+def test_review_workflow_paths_filter_matches_registry(
+    tmp_path: Path,
+) -> None:
+    """D0e — workflow path filter is heavy_lane ∪ claude_system."""
+    target = tmp_path / "dummy"
+    _run_bootstrap(target)
+    workflow = (
+        target / ".github" / "workflows" / "claude-review-heavy-lane.yml"
+    ).read_text(encoding="utf-8")
+    # Example profile critical paths must show up.
+    for needle in (
+        '- "src/auth/**"',
+        '- "src/billing/**"',
+        '- "migrations/**"',
+        '- "railway.json"',
+        '- ".claude/rules/**"',
+        '- ".github/workflows/**"',
+    ):
+        assert needle in workflow, (
+            f"workflow paths filter missing: {needle}"
+        )
+
+
+def test_pr_template_has_heavy_lane_checkboxes(tmp_path: Path) -> None:
+    target = tmp_path / "dummy"
+    _run_bootstrap(target)
+    pr = (target / ".github" / "pull_request_template.md").read_text(
+        encoding="utf-8",
+    )
+    for path in ("src/auth/**", "src/billing/**", "migrations/**", "railway.json"):
+        assert f"- [ ] `{path}`" in pr, (
+            f"PR template missing heavy-lane checkbox for {path!r}"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# D0e — --profile seed flag
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_profile_flag_renders_consumer_tree(tmp_path: Path) -> None:
+    """``--profile generic-python`` (no --profile-file) renders a
+    full consumer tree from the seed alone."""
+    target = tmp_path / "dummy-seed"
+    proc = subprocess.run(
+        [
+            sys.executable, str(_BOOTSTRAP),
+            "--profile", "generic-python",
+            "--target-dir", str(target),
+        ],
+        capture_output=True, text=True, check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    for rel in (
+        "docs/DEV_PIPELINE_STANDARD.md",
+        ".claude/path_registry.yaml",
+        ".claude/settings.json",
+        ".github/workflows/ci.yml",
+        ".github/workflows/claude-review-heavy-lane.yml",
+        ".github/pull_request_template.md",
+        "PROJECT_PROFILE.yaml",
+    ):
+        assert (target / rel).is_file(), f"missing: {rel}"
+
+
+def test_bootstrap_requires_profile_or_profile_file(tmp_path: Path) -> None:
+    target = tmp_path / "dummy-empty"
+    proc = subprocess.run(
+        [
+            sys.executable, str(_BOOTSTRAP),
+            "--target-dir", str(target),
+        ],
+        capture_output=True, text=True, check=False,
+    )
+    assert proc.returncode != 0, "expected failure when no profile supplied"
+    assert "profile" in proc.stderr.lower()
 
 
 def test_force_required_to_overwrite_nonempty(tmp_path: Path) -> None:

@@ -1,0 +1,52 @@
+name: ci
+
+# Generic Python CI for {{ project_name }} — byte-compile + ruff +
+# pytest. No deploy, no Docker, no DB service by default. Consumer
+# projects that need a Postgres job or extra integration steps add
+# them in a sibling workflow rather than mutating this one (the
+# baseline must stay portable).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: pytest + ruff + compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "{{ python_version }}"
+          cache: pip
+
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Project-specific install. Generic seed assumes ``[dev]``
+          # extra exists; consumer can edit if their layout differs.
+          python -m pip install -e .[dev] || python -m pip install -r requirements-dev.txt || python -m pip install pytest ruff
+
+      - name: Byte-compile (catch any syntax-level defects)
+        run: python -m compileall -q .
+
+      - name: ruff lint
+        run: python -m ruff check .
+
+      - name: pytest
+        run: {{ test_command }}

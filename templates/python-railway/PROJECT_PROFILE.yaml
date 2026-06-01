@@ -1,0 +1,65 @@
+# Profile seed: python-railway — D0e
+#
+# Python service deployed to Railway. Adds railway.json / Procfile /
+# railpack.toml to the heavy-lane glob and reinforces the operator-
+# only deploy rule in forbidden_assumptions. The dev system itself
+# NEVER runs ``railway up``; deployment remains operator-controlled.
+
+schema_version: 1
+
+project_name: my-railway-project
+language: python
+deployment: railway
+database: none
+
+critical_paths:
+  - "src/**"
+  - "tests/**"
+  - "pyproject.toml"
+
+deployment_specific_paths:
+  - "railway.json"
+  - "railpack.toml"
+  - "Procfile"
+
+claude_system_paths:
+  - ".claude/rules/**"
+  - ".claude/skills/**"
+  - ".claude/agents/**"
+  - ".claude/hooks/**"
+  - ".claude/settings.json"
+  - ".github/workflows/**"
+
+security_sensitive_paths:
+  - ".github/workflows/**"
+  - ".gitleaks.toml"
+  - ".gitleaksignore"
+  - ".pre-commit-config.yaml"
+  - "pyproject.toml"
+  - "requirements*.txt"
+  - "railway.json"
+  - "railpack.toml"
+  - "Procfile"
+
+forbidden_assumptions:
+  - docker
+  - "railway up unless explicitly operator-approved"
+  - auto-merge
+  - auto-fix
+
+memory_policy:
+  local_memory_limit_bytes: 24400
+  memory_boundary_doc: true
+  api_memstores_enabled: false
+  dev_memstore_id: ""
+  agent_memstore_id: ""
+
+review_mode: claude-review-only
+
+output_paths:
+  operator_reports: ".operator/reports/claude/"
+
+home_session_path: "~/.claude/projects/-Users-USERNAME-my-railway-project/"
+python_version: "3.11"
+test_command: "python -m pytest -q"
+gitleaks_version: "8.30.1"

@@ -24,6 +24,7 @@ sys.path.insert(0, str(_HERE))
 from bootstrap_project import (  # noqa: E402
     _list_templates,
     _plan_claude_surface,
+    _plan_github_surface,
     _profile_assertions,
     _target_doc_path,
     parse_yaml,
@@ -82,6 +83,18 @@ def audit(target_dir: Path) -> int:
                     f"executable-bit drift: {out_path} should be "
                     "executable (chmod +x)"
                 )
+    # D0e — GitHub-surface drift (workflows + PR template).
+    for out_path, expected_content, _exe in _plan_github_surface(
+        profile, target_dir,
+    ):
+        if not out_path.is_file():
+            findings.append(f"missing GitHub-surface artifact: {out_path}")
+            continue
+        on_disk = out_path.read_text(encoding="utf-8")
+        if on_disk != expected_content:
+            findings.append(
+                f"drift: {out_path} differs from re-rendered template"
+            )
     if findings:
         for line in findings:
             print(line, file=sys.stderr)

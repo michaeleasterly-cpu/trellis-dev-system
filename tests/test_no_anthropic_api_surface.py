@@ -51,6 +51,14 @@ _ALLOWLIST: tuple[str, ...] = (
     # scan at manifest-linter time and lists the forbidden patterns
     # (including ANTHROPIC_API_KEY) in its tuple. Same principle.
     "devsystem/scripts/check_manifests.py",
+    # D0e — the Claude-review workflow template passes
+    # ``${{ secrets.ANTHROPIC_API_KEY }}`` to the action's
+    # ``anthropic_api_key:`` input. The token is fetched from the
+    # GitHub secret store at workflow-run time; the file holds the
+    # *name*, not the value. This is the legitimate, documented way
+    # to wire the action — covered by the workflow's pinned
+    # permissions block + the review-only allowedTools whitelist.
+    "devsystem/github/workflows/claude-review-heavy-lane.yml.template",
 )
 
 # File extensions that are *prose* — allowed to mention these substrings

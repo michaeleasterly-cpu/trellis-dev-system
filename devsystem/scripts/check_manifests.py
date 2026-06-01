@@ -134,8 +134,9 @@ def _strip_shell_comments(text: str) -> str:
 
 
 def check_consumer_target(target_dir: Path) -> list[str]:
-    """D0d — validate the rendered Claude surface in a CONSUMER repo
-    (one that bootstrap_project.py wrote into). Read-only checks:
+    """D0d/D0e — validate the rendered Claude + GitHub surface in a
+    CONSUMER repo (one that bootstrap_project.py wrote into). Read-only
+    checks:
 
       * .claude/path_registry.yaml exists and parses.
       * .claude/rules/*.md have YAML frontmatter and non-empty body.
@@ -143,6 +144,14 @@ def check_consumer_target(target_dir: Path) -> list[str]:
         frontmatter and non-empty body.
       * .claude/hooks/*.sh have shebang + executable bit.
       * No forbidden command in any hook body (comments stripped).
+      * D0e — .claude/settings.json is valid JSON, references only
+        existing hook scripts.
+      * D0e — .github/workflows/claude-review-heavy-lane.yml has
+        permissions.contents: read (NOT write), and its on.pull_request
+        paths filter equals heavy_lane ∪ claude_system from the
+        path_registry.
+      * D0e — .github/pull_request_template.md contains a checkbox
+        line for every heavy_lane path in the registry.
     """
     import re as _re
     findings: list[str] = []
@@ -208,6 +217,205 @@ def check_consumer_target(target_dir: Path) -> list[str]:
                     findings.append(
                         _err(hook, f"forbidden {label}: {m.group(0)!r}")
                     )
+    findings.extend(_check_consumer_settings(claude_root))
+    findings.extend(_check_consumer_workflows_and_pr(target_dir, claude_root))
+    return findings
+
+
+def _check_consumer_settings(claude_root: Path) -> list[str]:
+    """Validate .claude/settings.json: JSON parses + every hook script
+    it references exists."""
+    findings: list[str] = []
+    settings = claude_root / "settings.json"
+    if not settings.is_file():
+        return [_err(settings, "missing .claude/settings.json")]
+    try:
+        data = json.loads(settings.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return [_err(settings, f"invalid JSON: {exc}")]
+    hooks_block = data.get("hooks", {})
+    if not isinstance(hooks_block, dict):
+        return [_err(settings, "hooks block must be an object")]
+    for event, entries in hooks_block.items():
+        if not isinstance(entries, list):
+            findings.append(
+                _err(settings, f"hooks.{event} must be a list")
+            )
+            continue
+        for entry in entries:
+            for hook in entry.get("hooks", []) or []:
+                cmd = str(hook.get("command", ""))
+                marker = "$CLAUDE_PROJECT_DIR/"
+                if marker not in cmd:
+                    findings.append(
+                        _err(
+                            settings,
+                            f"hook command must reference $CLAUDE_PROJECT_DIR: {cmd!r}",
+                        )
+                    )
+                    continue
+                rel = cmd.split(marker, 1)[1].strip()
+                target = claude_root.parent / rel
+                if not target.is_file():
+                    findings.append(
+                        _err(
+                            settings,
+                            f"references missing hook script {rel!r}",
+                        )
+                    )
+    return findings
+
+
+def _read_registry_paths(claude_root: Path) -> tuple[list[str], list[str], list[str]]:
+    """Return (heavy_lane_paths, claude_system_paths, errors).
+
+    Ad-hoc text scan rather than the full YAML parser, because the
+    registry uses 2-level nesting (``groups.heavy_lane.paths``) that
+    the stdlib parser doesn't model. We walk top-down: find
+    ``groups:``; under it find ``heavy_lane:`` and ``claude_system:``;
+    inside each find ``paths:`` and collect ``- path: "..."`` entries.
+    """
+    registry = claude_root / "path_registry.yaml"
+    if not registry.is_file():
+        return [], [], [_err(registry, "missing path_registry.yaml")]
+    text = registry.read_text(encoding="utf-8")
+    lines = text.splitlines()
+
+    def _collect(group_name: str) -> list[str]:
+        out: list[str] = []
+        i = 0
+        while i < len(lines):
+            stripped = lines[i].strip()
+            if stripped == f"{group_name}:":
+                i += 1
+                # Walk forward until we hit another top-level group
+                # under groups: (i.e. a line at indent 2 ending with
+                # `:` that isn't ``paths:``).
+                while i < len(lines):
+                    raw = lines[i]
+                    s = raw.strip()
+                    if not s or s.startswith("#"):
+                        i += 1
+                        continue
+                    indent = len(raw) - len(raw.lstrip())
+                    if indent <= 2 and s.endswith(":") and s != "paths:":
+                        break
+                    if s.startswith("- path:"):
+                        _, _, value = s.partition(":")
+                        v = value.strip()
+                        if v.startswith('"') and v.endswith('"'):
+                            v = v[1:-1]
+                        if v:
+                            out.append(v)
+                    i += 1
+                break
+            i += 1
+        return out
+
+    heavy = _collect("heavy_lane")
+    claude_sys = _collect("claude_system")
+    return heavy, claude_sys, []
+
+
+def _check_consumer_workflows_and_pr(
+    target_dir: Path, claude_root: Path,
+) -> list[str]:
+    """Validate .github/workflows/* and pull_request_template.md against
+    the registry. The Claude review workflow's path filter must equal
+    heavy_lane ∪ claude_system; its permissions.contents must be
+    ``read`` (never ``write``); its allowedTools must not contain any
+    write/mutation surface. The PR template must contain a checkbox
+    line for every heavy_lane path."""
+    findings: list[str] = []
+    heavy, claude_sys, errs = _read_registry_paths(claude_root)
+    findings.extend(errs)
+    expected_workflow_paths = list(heavy) + list(claude_sys)
+
+    workflows_dir = target_dir / ".github" / "workflows"
+    review_yml = workflows_dir / "claude-review-heavy-lane.yml"
+    if not review_yml.is_file():
+        findings.append(
+            _err(review_yml, "missing claude-review-heavy-lane.yml")
+        )
+    else:
+        text = review_yml.read_text(encoding="utf-8")
+        # permissions.contents must NOT be write
+        if "contents: write" in text:
+            findings.append(
+                _err(
+                    review_yml,
+                    "permissions.contents: write is forbidden (review-only)",
+                )
+            )
+        # Hard rule for allowedTools — disallow any obvious mutation
+        # tool surface in the Bash() entries.
+        if "Bash(git commit" in text or "Bash(git push" in text:
+            findings.append(
+                _err(
+                    review_yml,
+                    "allowedTools must not include git mutation surface",
+                )
+            )
+        # Extract every quoted path inside the ``on.pull_request.paths``
+        # block. Cheap parse: pick lines between ``paths:`` and the next
+        # zero-indent token.
+        in_paths = False
+        actual: list[str] = []
+        for raw in text.splitlines():
+            stripped = raw.strip()
+            if not in_paths:
+                if stripped == "paths:":
+                    in_paths = True
+                continue
+            # Stop on the next sibling/parent key (a line whose first
+            # non-space char is alphabetic at low indent).
+            if stripped.startswith("#"):
+                continue
+            if stripped.startswith("- "):
+                token = stripped[2:].strip()
+                if token.startswith('"') and token.endswith('"'):
+                    token = token[1:-1]
+                actual.append(token)
+                continue
+            if stripped and not stripped.startswith("- ") and not raw.startswith(" "):
+                break
+            if stripped and stripped.endswith(":") and not stripped.startswith("- "):
+                break
+        if actual != expected_workflow_paths:
+            findings.append(
+                _err(
+                    review_yml,
+                    (
+                        "paths filter drift: "
+                        f"actual={actual!r} expected={expected_workflow_paths!r}"
+                    ),
+                )
+            )
+
+    secret_yml = workflows_dir / "secret-scan.yml"
+    if not secret_yml.is_file():
+        findings.append(
+            _err(secret_yml, "missing secret-scan.yml")
+        )
+
+    ci_yml = workflows_dir / "ci.yml"
+    if not ci_yml.is_file():
+        findings.append(_err(ci_yml, "missing ci.yml"))
+
+    pr_template = target_dir / ".github" / "pull_request_template.md"
+    if not pr_template.is_file():
+        findings.append(_err(pr_template, "missing pull_request_template.md"))
+    else:
+        text = pr_template.read_text(encoding="utf-8")
+        for p in heavy:
+            needle = f"- [ ] `{p}`"
+            if needle not in text:
+                findings.append(
+                    _err(
+                        pr_template,
+                        f"missing heavy-lane checkbox for path {p!r}",
+                    )
+                )
     return findings
 
 
