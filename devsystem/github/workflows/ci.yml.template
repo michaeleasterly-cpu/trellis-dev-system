@@ -33,7 +33,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "{{ python_version }}"
-          cache: pip
+          # ``cache: pip`` is intentionally NOT set here. The
+          # setup-python action treats a missing
+          # ``pyproject.toml`` / ``requirements*.txt`` as a hard
+          # failure when caching is requested, which breaks the very
+          # first CI run on a freshly-bootstrapped consumer repo
+          # (the repo has no dependency manifest yet). Consumers can
+          # opt back in by adding ``cache: pip`` to their generated
+          # ``ci.yml`` once they've added a manifest.
 
       - name: Install dev dependencies
         run: |
