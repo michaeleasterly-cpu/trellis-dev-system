@@ -1,8 +1,19 @@
 # Trellis — methodology log
 
-Append-only record of methodology lessons surfaced during real-consumer work that should inform future dev-system templates, profile seeds, and consumer guidance. Each entry is dated and cites the originating consumer PR + the authoritative external doc(s).
+## What this is for
 
-The format is deliberately small: one heading per lesson, a *one-paragraph rationale*, a concrete recommendation for the dev system, and links. Resist the temptation to grow this into a wiki — long-form design lives in `docs/superpowers/specs/` or the consumer's own `docs/`; this file is a *log*, not a manual.
+This is a running diary of lessons learned while real projects used
+Trellis — small "here's what we got wrong and how to do it right next
+time" notes that should shape future templates and guidance. It is
+**append-only**: you add new entries but never edit or delete old ones,
+so the history stays honest. Each entry is dated and cites the pull
+request that surfaced the lesson plus an official source backing it up.
+
+Keep the format small on purpose: one heading per lesson, a
+*one-paragraph reason*, a concrete recommendation for the dev system,
+and links. Don't let it grow into a wiki — long design write-ups belong
+in `docs/superpowers/specs/` or the consumer's own `docs/`. This file is
+a *log*, not a manual.
 
 ---
 

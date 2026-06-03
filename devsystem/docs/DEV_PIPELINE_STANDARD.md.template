@@ -1,66 +1,72 @@
 # Dev Pipeline Standard
 
-This document is the canonical, operator-endorsed development pipeline for the **{{ project_name }}** repository. It sits beside `docs/STYLE_GUIDE.md` (if present): STYLE_GUIDE governs how code looks; this governs how a change moves from idea to merged.
+## What this is for
 
-The anti-rot presence-sentinel `tests/test_dev_pipeline_standard_present.py` (rendered into the consumer repo by the dev-system bootstrap) reds CI if this standard is deleted or its load-bearing clauses are gutted.
+This doc explains how a change moves from an idea to merged code in the **{{ project_name }}** repository. Not every change is equally risky, so this doc sorts changes into three "lanes." A small, safe change gets a short, fast process. A risky change gets the full process. The goal is to spend your review effort where it actually matters, and not slow down trivial fixes.
 
-This standard is **descriptive of the process**, not a substitute for the operator and reviewer discipline that enforces it. The sentinel checks that the standard is present and intact; it cannot test that the process was followed.
+It sits beside `docs/STYLE_GUIDE.md` (if present). STYLE_GUIDE governs how code looks; this governs how a change ships.
+
+A sentinel test (`tests/test_dev_pipeline_standard_present.py`, rendered into your repo by the bootstrap) fails CI if this doc is deleted or its core rules are gutted. ("Sentinel" = a small guard test that fails the build when something required goes missing.) The sentinel checks that the doc is present and intact; it cannot check that you actually followed the process — that is on the operator and reviewer.
 
 ## §0 Scope-gated lanes (when to use which workflow)
 
-The full §1 pipeline below is correct for high-risk work but is **not** the right default for every diff. The threshold, not the pipeline, is the lever. Anthropic's canonical Claude Code workflow is **Explore → Plan → Implement → Commit** (`https://code.claude.com/docs/en/best-practices`), and that doc explicitly says: *"Plan mode is useful, but also adds overhead… If you could describe the diff in one sentence, skip the plan."* The three lanes below encode that authority.
+The full §1 pipeline below is the right process for high-risk work, but it is the wrong default for every tiny change. The lever is the *threshold* — picking the right lane — not the pipeline itself.
+
+Anthropic's standard Claude Code workflow is **Explore → Plan → Implement → Commit** (`https://code.claude.com/docs/en/best-practices`). That same doc says plainly: *"Plan mode is useful, but also adds overhead… If you could describe the diff in one sentence, skip the plan."* The three lanes below follow that advice.
 
 ### Fast lane (Implement → verify → Commit)
 
-Use the fast lane when **ALL** of the following hold:
+Use the fast lane when **ALL** of the following are true:
 
-- the diff is describable in one sentence;
+- you can describe the change in one sentence;
 - the change is one of: single file, doc-only, rename-only, log-line, or typo;
 - no migration;
 - no new public API.
 
-Fast-lane workflow: **Implement → verify (tests + CI) → Commit.** Explicitly omitted: no brainstorm, no `expert subagent` harden, no spec, no plan, no `split-review`. The `tests/test_dev_pipeline_standard_present.py` sentinel + CI (`gh pr checks`) remain the proof; the discipline rules in §2 still apply.
+Fast-lane steps: **Implement → verify (tests + CI) → Commit.** What you skip on purpose: no brainstorm, no expert-subagent hardening, no spec, no plan, no `split-review` (defined in §2). The `tests/test_dev_pipeline_standard_present.py` sentinel + CI (`gh pr checks`) are still the proof, and the discipline rules in §2 still apply.
 
 ### Heavy lane (mandatory full §1 pipeline)
 
-The full §1 pipeline (including the `expert subagent` harden, the `spec-read gate`, and the `split-review`) is **mandatory** when the change touches any path enumerated in `.claude/path_registry.yaml` under `groups.heavy_lane` (canonical SoT). The current `heavy_lane` list for this project:
+The "heavy lane" is the full §1 pipeline, used for the riskiest changes. The full pipeline (including the expert-subagent hardening, the spec-read gate, and the `split-review`) is **mandatory** when the change touches any path listed in `.claude/path_registry.yaml` under `groups.heavy_lane`.
+
+What this means: the path registry is the single authoritative list of high-risk paths (the "SoT," source of truth). One list, so the rules can't disagree. The current `heavy_lane` list for this project:
 
 {{ heavy_lane_paths_markdown }}
 
-Drift between this list, the registry, the workflow filter, the heavy-lane rule frontmatter, the PR template checklist, and the session-start summary is caught by `scripts/check_manifests.py` and `tests/test_path_registry_present.py`.
+If this list ever falls out of sync with the registry, the workflow filter, the heavy-lane rule frontmatter, the PR template checklist, or the session-start summary, then `scripts/check_manifests.py` and `tests/test_path_registry_present.py` catch the drift.
 
 ### Default lane (Anthropic's Explore → Plan → Implement → Commit)
 
-Everything outside the fast lane **and** outside the heavy-lane enumeration defaults to Anthropic's canonical workflow — **Explore → Plan → Implement → Commit** — with plan-mode optional per the one-sentence-diff rule above. The default lane uses **one** review (see §1 step 7); §2 still applies in full.
+Anything that is neither a fast-lane change nor a heavy-lane path falls into the default lane. It uses Anthropic's standard workflow — **Explore → Plan → Implement → Commit** — with the plan step optional per the one-sentence rule above. The default lane uses **one** review (see §1 step 7); §2 still applies in full.
 
 ## §1 The Pipeline (heavy-lane — numbered, non-optional)
 
-Heavy-lane changes (per §0) follow these steps in order. None is optional in the heavy lane.
+Heavy-lane changes (per §0) follow these steps in order. In the heavy lane, none is optional.
 
-1. **Brainstorm.** Explore intent, requirements, and design before touching code.
-2. **Commission a skeptical expert subagent to harden the design.** A fresh-context expert subagent stress-tests the design, surfaces fatal objections, and tightens scope. The expert decides design/approach — do not over-ask the operator.
-3. **Spec = its own gated docs-only PR.** The hardened design is written as a spec and lands as a separate, docs-only gated PR.
-4. **Operator spec-read gate.** An explicit human acknowledgement that the operator has read the spec. This is a `spec-read gate` — a hard checkpoint, not a courtesy.
-5. **Writing-plans = its own gated docs-only PR.** The implementation plan is written and lands as a separate, docs-only gated PR.
-6. **Subagent-driven execution.** A fresh implementer subagent executes the plan task by task.
-7. **Review.** **Default lane (§0): ONE review** — a single fresh-context reviewer per change. The `split-review` rule (spec-compliance first; ONLY on its PASS a SEPARATE fresh-context code-quality reviewer; never one combined two-gate reviewer) applies **only when BOTH** (a) a written spec exists for the change AND (b) the change touches >1 module OR a heavy-lane path (§0). In every other case the `split-review` pattern is **explicitly omitted** — the lean directive (§0) is that one fresh-context review + the CI gate + the tests are the proof; re-reviewing every fix-loop iteration is the failure mode this standard bans by default.
+1. **Brainstorm.** Explore the intent, requirements, and design before touching code.
+2. **Have a skeptical expert subagent harden the design.** A fresh-context expert subagent stress-tests the design, raises fatal objections, and tightens scope. ("Subagent" = a separate Claude instance with its own clean context, so it isn't biased by the work so far.) The expert decides the design and approach — don't over-ask the operator.
+3. **Spec = its own gated docs-only PR.** Write the hardened design as a spec and ship it as a separate, docs-only PR that has to pass review. ("Spec-only PR" = a pull request that changes only documentation, namely the spec, with no code.)
+4. **Operator spec-read gate.** The operator explicitly confirms they have read the spec. This is a hard checkpoint, not a courtesy.
+5. **Writing-plans = its own gated docs-only PR.** Write the implementation plan and ship it as a separate, docs-only PR that has to pass review.
+6. **Subagent-driven execution.** A fresh implementer subagent works the plan task by task.
+7. **Review.** **Default lane (§0): ONE review** — a single fresh-context reviewer per change. The `split-review` rule (spec-compliance first; ONLY on its PASS a SEPARATE fresh-context code-quality reviewer; never one combined two-gate reviewer) applies **only when BOTH** (a) a written spec exists for the change AND (b) the change touches >1 module OR a heavy-lane path (§0). In every other case the `split-review` pattern is **explicitly omitted** — the lean directive (§0) is that one fresh-context review + the CI gate + the tests are the proof. Re-reviewing every fix-loop iteration is the failure mode this standard bans by default.
 8. **Implementer folds reviewer findings.** The implementer (not the reviewer) applies the review findings.
-9. **Gated PR.** The change lands as a gated pull request.
+9. **Gated PR.** The change ships as a pull request that has to pass its gates.
 10. **CI verified via `gh pr checks <n>`** — never `gh run watch`'s exit code. `gh run watch` has a documented misreport: its exit code does not faithfully reflect check status. Read `gh pr checks <n>` instead.
-11. **The whole single-process `pytest` + bidirectional module-order-flip is the AUTHORITATIVE gate.** The fast parallel run (`-n auto --dist loadgroup`) is an accelerator only; the serial run plus the reversed-module-order run is the gate of record (see §3 for the accelerator-vs-authoritative-gate distinction).
+11. **The whole single-process `pytest` + bidirectional module-order-flip is the AUTHORITATIVE gate.** The fast parallel run (`-n auto --dist loadgroup`) is an accelerator only; the serial run plus the reversed-module-order run is the gate of record (see §3 for the accelerator-vs-authoritative-gate distinction). ("Order-flip" means running the tests again in reversed file order, which catches tests that only pass because of the order they ran in.)
 12. **Squash-merge `--delete-branch`.**
 13. **`git switch main && git pull` sync.**
 
 ## §2 Standing Discipline Rules
 
-Each rule with its *why*.
+Each rule, with the reason behind it.
 
-- **`split-review` is heavy-lane only (default = one review).** Per §0, the `split-review` pattern (a fresh-context spec/intent reviewer; only on its PASS a SEPARATE fresh-context code-quality reviewer; never one combined two-gate reviewer) applies **only** in the heavy lane. **Default lane and fast lane use one fresh-context review.** *Why:* a combined reviewer dilutes both gates on high-risk work; applying split-review uniformly is the failure mode this standard bans.
+- **`split-review` is heavy-lane only (default = one review).** Per §0, the `split-review` pattern (a fresh-context spec/intent reviewer; only on its PASS a SEPARATE fresh-context code-quality reviewer; never one combined two-gate reviewer) applies **only** in the heavy lane. **Default lane and fast lane use one fresh-context review.** *Why:* a combined reviewer waters down both gates on high-risk work; applying split-review to everything is the failure mode this standard bans.
 - **`gh pr checks` not `gh run watch`.** Verify CI via `gh pr checks <n>`. *Why:* `gh run watch`'s exit code is a documented misreport — it can return success while checks are red.
-- **Whole-suite + order-flip is authoritative, never a subset.** Run the entire suite in one process plus the reversed module order; a subset-green result is not CI-green.
-- **Cross-session non-stomp; no `git stash`.** Never touch another lane's files or worktrees. Never use `git stash`. *Why:* `git stash` is repo-global — it is a cross-session hazard that silently moves the other lane's working tree.
-- **`git switch` never `git checkout <sha|branch>`.** *Why:* `git switch` refuses to silently detach HEAD.
-- **Review mode is `{{ review_mode }}` — no auto-fix, no auto-merge.** The operator is the dispositive merge gate. Claude reviews never write to the repo or merge PRs.
+- **Whole-suite + order-flip is authoritative, never a subset.** Run the entire test suite in one process, plus the reversed module order. A green result from running only some tests is not the same as CI-green.
+- **Cross-session non-stomp; no `git stash`.** Never touch another work session's files or worktrees. Never use `git stash`. *Why:* `git stash` is repo-wide — it silently moves the other session's working tree, which is a cross-session hazard.
+- **`git switch` never `git checkout <sha|branch>`.** *Why:* `git switch` refuses to silently detach HEAD (it won't quietly leave you on no branch).
+- **Review mode is `{{ review_mode }}` — no auto-fix, no auto-merge.** The operator is the final merge gate. Claude reviews never write to the repo or merge PRs.
 
 ## §3 Lean Integration
 
@@ -69,4 +75,4 @@ Each rule with its *why*.
 
 ## §4 Scope of this standard
 
-This standard is **topology-agnostic**: it holds unchanged whether the work is done by a single session, a two-session human-relay, or a future Agent Teams topology. The pipeline (§1), the Standing Discipline Rules (§2), and the Lean integration (§3) do not change with the coordination mechanism — Agent Teams reorganize who types, not the authoritative gate.
+This standard is **topology-agnostic**: it does not change based on who or what is doing the work — one session, a two-session human relay, or a future Agent Teams setup. The pipeline (§1), the Standing Discipline Rules (§2), and the Lean integration (§3) stay the same no matter how the work is coordinated. Agent Teams reorganize who types; they don't change the authoritative gate.

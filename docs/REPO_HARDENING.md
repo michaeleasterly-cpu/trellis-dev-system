@@ -1,5 +1,15 @@
 # trellis-dev-system — repository hardening (D0g)
 
+## What this is for
+
+"Hardening" means locking down the repo so mistakes and secrets can't
+slip in. This doc lists the automatic checks ("gates") that Trellis
+runs on its own code, plus the recommended settings to protect the
+`main` branch. Trellis hands the same secret-scanning gate to the
+projects that adopt it, so it runs that gate on itself first —
+"dogfooding," eating your own dog food, means using your own tool
+before asking anyone else to.
+
 This document describes the gates trellis-dev-system enforces on
 itself and the branch-protection settings recommended once a second
 consumer adopts the dev system. It is the dogfood counterpart to the

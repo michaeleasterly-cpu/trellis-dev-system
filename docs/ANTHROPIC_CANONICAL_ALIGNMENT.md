@@ -1,5 +1,14 @@
 # Trellis — Anthropic-canonical alignment (Phase 3)
 
+## What this is for
+
+"Canonical" means the official, recommended way Anthropic sets up Claude
+Code — the patterns in their own docs and example repos. This doc checks
+how closely the Trellis templates match those official patterns, and
+records what Phase 3 changed to close the gaps. It is a reference doc;
+read it if you want to know why the templates are shaped the way they
+are, or before you change them.
+
 This doc records how the Trellis dev-system templates line up against the
 Anthropic-canonical Claude Code surface, and what Phase 3 changed. It is the
 Phase-3 deliverable of a three-phase arc:

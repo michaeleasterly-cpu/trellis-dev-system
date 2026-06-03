@@ -1,12 +1,20 @@
 # Memory Boundary + Memstore Handoff
 
-Canonical memory-boundary model + the cross-session memstore handoff for the **{{ project_name }}** project.
+## What this is for
+
+This doc answers one question: what is Claude allowed to remember, and where? "Memory" here means anything Claude keeps between sessions — short rules, notes, and optional cloud storage. The danger is that memory drifts out of sync with the real code, or that secrets end up saved somewhere they shouldn't be. This doc draws a clear line ("the memory boundary") that prevents both.
+
+The core idea: memory is *context*, not the source of truth. Memory helps Claude recall why a choice was made; it never decides what the code actually does. The four "tiers" below rank where information should live, from short always-loaded rules down to the repo's own files (the final word). A "memstore" is Anthropic's optional cloud memory for an assistant.
+
+This doc covers the **{{ project_name }}** project.
 
 > **The rule of the file**: memory is *context*, not source of truth.
 > If a fact must be enforced, it belongs in tests/hooks/CI, not in
 > any memory tier below.
 
 ## §1 — Four-tier memory boundary
+
+These are the four places memory can live, ranked. Higher tiers are loaded more often and trusted less for facts; lower tiers are the real, auditable record.
 
 | Tier | Surface | Purpose | Allowed | Forbidden |
 |---|---|---|---|---|
@@ -18,6 +26,8 @@ Canonical memory-boundary model + the cross-session memstore handoff for the **{
 **Tier-4 overrides tiers 1–3 absolutely.** Repo code, tests, schemas, and migrations are dispositive. Memory of any kind cannot override them: if memory disagrees with current code or a current test, trust the code/test and update or remove the memory.
 
 ## §2 — Source-of-truth hierarchy (when sources disagree)
+
+When two sources say different things, trust them in this order (top wins):
 
 1. **Live code, tests, schemas, migrations** (tier 4) — dispositive.
 2. **Repo docs** (`docs/**`, `TODO.md`) — dispositive for intent/design/plans.
@@ -68,7 +78,9 @@ The full audit procedure (line-count invariant, dedup checks, archival decisions
 
 ## §6 — Cross-session memstore handoff (tier 3, OPTIONAL)
 
-Cloud (Anthropic API beta) memstores are **OFF by default** in this project. The setting lives in `PROJECT_PROFILE.yaml` under `memory_policy.api_memstores_enabled`. The dev-system bootstrap renders one of the two sections below into your project's `docs/MEMSTORE_HANDOFF.md` based on that value.
+This section covers tier 3 — Anthropic's optional cloud memory. You can skip it entirely if you don't use cloud memory.
+
+Cloud (Anthropic API beta) memstores are **OFF by default** in this project. The setting lives in `PROJECT_PROFILE.yaml` under `memory_policy.api_memstores_enabled`. Based on that value, the dev-system bootstrap renders one of the two sections below into your project's `docs/MEMSTORE_HANDOFF.md`.
 
 <!-- BEGIN_API_MEMSTORES_DISABLED -->
 **Cloud memstores are disabled for this project** (`memory_policy.api_memstores_enabled: false`).

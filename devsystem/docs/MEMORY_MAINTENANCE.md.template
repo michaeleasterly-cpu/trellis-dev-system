@@ -1,12 +1,14 @@
 # Memory Maintenance Procedure
 
-Canonical procedure for pruning Claude's persistent memory store in the **{{ project_name }}** project.
+## What this is for
 
-**Memory store (canonical, machine-local):**
+Over time, Claude's saved memories pile up. Some go stale, some repeat each other, and some just restate what the code already says. Stale memory is worse than no memory, because Claude trusts it. This doc is the step-by-step cleanup ("pruning") routine for the **{{ project_name }}** project: how to review every saved memory, keep the good ones, fix the half-true ones, and delete the rest.
+
+**Memory store (the real one, on your machine):**
 `{{ home_session_path }}memory/`
-(one fact per file + `MEMORY.md` index). This is the path Claude Code reads from at session start.
+(one fact per file, plus a `MEMORY.md` index file that lists them). This is the path Claude Code reads from when a session starts.
 
-**Sync workflow (optional):** A consumer project may mirror this directory into a tracked `docs/memory/` snapshot for git-recoverable archival. The sync (if used) is **one-way live → repo**. The canonical store is the machine-local dir; never edit a tracked snapshot and expect Claude to read it.
+**Sync workflow (optional):** A project may copy this directory into a tracked `docs/memory/` snapshot so it can be recovered from git history. If you use the sync, it only ever goes **one way: live → repo.** The real store is the on-machine directory; never edit a tracked snapshot and expect Claude to read it.
 
 ## Trigger
 
@@ -58,6 +60,8 @@ Operator says **"clean up your memories"** / **"cleanup your memories"** (or equ
 Bound by the no-shortcuts / 100%-verified standard: verify each RETAIN/UPDATE/DELETE decision against current code or docs — do not hand-wave "looks stale".
 
 ## MEMORY.md over the {{ local_memory_limit_bytes }}-byte ceiling
+
+There is a size limit ("ceiling") on the `MEMORY.md` index file. If it gets too big, Claude Code silently cuts off the end of it at session start, so memories past the cutoff just vanish. That is why the limit exists.
 
 `tests/test_memory_index_size.py` reds CI if a tracked `MEMORY.md` exceeds **{{ local_memory_limit_bytes }} bytes**. The local memstore at `{{ home_session_path }}memory/MEMORY.md` is operator-local and not tracked, so the sentinel does not police it directly — but Claude Code truncates the index at session start above the same threshold, so the local file should follow the same ceiling.
 

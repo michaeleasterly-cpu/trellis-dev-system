@@ -1,6 +1,12 @@
 # Security Guidance
 
-Canonical security policy for the **{{ project_name }}** project. Defines the 3-layer review cascade Claude and operator follow when a diff touches a security-sensitive surface. Companion artifacts:
+## What this is for
+
+This is the security policy for the **{{ project_name }}** project. It answers: when a change touches something sensitive, how do we review it before it merges? The answer is a three-step review process (a "cascade") that runs from cheap automatic checks up to a human decision. Each step can catch problems the earlier steps missed.
+
+One rule sits above everything: security review is **review-only**. No step in this process is allowed to fix code, merge, push, change deployment settings, edit Claude's memory, install tools, or print secrets. The operator (the human in charge) makes the final call.
+
+This doc defines that 3-layer review cascade. Companion artifacts:
 
 - `.claude/rules/security-guidance.md` — path-loaded rule that auto-injects this guidance into Claude's context on a security-sensitive diff.
 - `.claude/skills/security-review/SKILL.md` — model-invocable manual review checklist tied to the cascade below.
@@ -10,9 +16,11 @@ Canonical security policy for the **{{ project_name }}** project. Defines the 3-
 
 ## §1 — Three-layer cascade
 
-Every security-sensitive diff (per §2) must clear all three layers before merge.
+A "security-sensitive diff" is a change that touches something on the project's sensitive list (see §2). Every such change must pass all three layers before it can merge.
 
 ### Layer 1 — static checks (deterministic, mechanical)
+
+"Static checks" run automatically and always give the same answer for the same input — no judgment involved.
 
 Runs in CI on every push and on every pre-commit hook locally.
 
@@ -27,7 +35,7 @@ Layer-1 findings are **BLOCKING** by default (CI reds, PR cannot merge through n
 
 ### Layer 2 — Claude review (advisory, fresh-context)
 
-Two sub-paths depending on whether the diff triggers the heavy-lane workflow.
+Here Claude reviews the change with a clean context. There are two paths, depending on whether the change hits a "heavy-lane" path — that is, one of the high-risk paths listed in the path registry (`.claude/path_registry.yaml`). High-risk paths get an automatic review in CI; everything else can get a manual review on request.
 
 #### Layer 2a — automatic heavy-lane Claude review
 
@@ -47,7 +55,7 @@ Layer-2 findings classify as **BLOCKING** / **NEEDS_OPERATOR_REVIEW** / **ADVISO
 
 ### Layer 3 — operator gate (dispositive)
 
-The branch policy blocks normal merge on `main`. Even with all CI checks green and a Claude `VERDICT: PASS`, the operator (never the reviewer, never an automated step) must explicitly authorize the merge — for example `gh pr merge --admin` under the current policy, OR a future policy that requires reviewer approval. No CI gate and no Claude verdict can override the operator gate.
+This is the final, deciding step: the operator (the human) must approve. The branch policy blocks normal merge on `main`. Even with all CI checks green and a Claude `VERDICT: PASS`, the operator (never the reviewer, never an automated step) must explicitly authorize the merge — for example `gh pr merge --admin` under the current policy, OR a future policy that requires reviewer approval. No CI gate and no Claude verdict can override the operator gate.
 
 A **BLOCKING** finding from layer 1 or layer 2 means: do not admin-override. Either fix the finding or reject the PR.
 
@@ -64,6 +72,8 @@ Forbidden runtime assumptions for this project — agents and skills must never 
 {{ forbidden_assumptions_markdown }}
 
 ## §3 — Finding classification
+
+Every issue a review turns up ("finding") gets one of three labels, which decides what happens next:
 
 | Class | Meaning | Consequence |
 |---|---|---|

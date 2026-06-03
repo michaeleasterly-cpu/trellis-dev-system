@@ -1,6 +1,12 @@
 # Claude Session / Cost Observability
 
-Manual, local, metadata-only Claude session and cost report for the **{{ project_name }}** project. Built to track Claude-assisted development usage *without* storing transcript content, prompts, tool payloads, secrets, or any operator-private data.
+## What this is for
+
+When you build with Claude, you want to know how much you're using it and roughly what it costs — without saving any of the actual conversation. This tool does exactly that. It reads the local session log files, pulls out only the safe numbers (how many sessions, how many tokens, which models, an estimated cost), and writes a small report. It never saves what you said, what Claude said, or any file contents.
+
+This is a metadata-only report: it keeps the *labels and counts* (like token totals and tool names) but never the *content* (like your prompts or Claude's replies). It is manual and local: you run it yourself, on your machine, and it never phones home.
+
+This covers the **{{ project_name }}** project. It tracks Claude-assisted development usage *without* storing transcript content, prompts, tool payloads, secrets, or any operator-private data.
 
 Companion artifacts:
 
@@ -13,7 +19,7 @@ Companion artifacts:
 
 ## §1 — What this tool is
 
-The Claude Code session jsonl files at `{{ home_session_path }}*.jsonl` carry both load-bearing metadata (token counts, model names, timestamps, tool-call names) AND sensitive transcript content (prompts, responses, tool arguments, tool results, attachment payloads, file-history snapshots, queue-operation content). The report script extracts only the metadata; everything else is forbidden.
+Claude Code saves each session to a `.jsonl` log file at `{{ home_session_path }}*.jsonl`. Those files hold two kinds of data mixed together: safe metadata (token counts, model names, timestamps, tool-call names) AND sensitive transcript content (prompts, responses, tool arguments, tool results, attachment payloads, file-history snapshots, queue-operation content). The report script pulls out only the safe metadata; everything else is forbidden.
 
 The tool answers operator questions like:
 
