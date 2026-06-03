@@ -1,5 +1,5 @@
 [project]
-name = "packetvoid-dev-system"
+name = "trellis-dev-system"
 version = "0.1.0"
 description = "Reusable Claude/dev workflow scaffold for new repositories (D0a skeleton)."
 requires-python = ">=3.11"

@@ -1,5 +1,5 @@
-# PROJECT_PROFILE.yaml — consumer project configuration for Packet Void
-# Dev System bootstrap. Copy this to your project root, fill in, and pass
+# PROJECT_PROFILE.yaml — consumer project configuration for Trellis
+# bootstrap. Copy this to your project root, fill in, and pass
 # to ``bootstrap_project.py`` (lands in D0c).
 #
 # Schema: schemas/project_profile.schema.json (JSON Schema draft-07).

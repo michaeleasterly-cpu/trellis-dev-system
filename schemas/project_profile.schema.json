@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/michaeleasterly-cpu/packetvoid-dev-system/schemas/project_profile.schema.json",
+  "$id": "https://github.com/michaeleasterly-cpu/trellis-dev-system/schemas/project_profile.schema.json",
   "title": "PROJECT_PROFILE",
-  "description": "Consumer project configuration for the Packet Void Dev System bootstrap. Drives path registry generation, security-guidance rule, memory boundary, and observability output paths. The bootstrap script validates this file against the schema before rendering any artifact.",
+  "description": "Consumer project configuration for the Trellis bootstrap. Drives path registry generation, security-guidance rule, memory boundary, and observability output paths. The bootstrap script validates this file against the schema before rendering any artifact.",
   "type": "object",
   "additionalProperties": false,
   "required": [

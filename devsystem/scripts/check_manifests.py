@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""D0c — Packet Void Dev System manifest linter (minimal baseline).
+"""D0c — Trellis manifest linter (minimal baseline).
 
 D0c scope is intentionally narrow:
 

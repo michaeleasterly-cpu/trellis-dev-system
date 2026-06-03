@@ -1,5 +1,5 @@
 # Portable .gitleaks.toml shipped to consumer repos by
-# packetvoid-dev-system. Renders into the consumer's repo root.
+# trellis-dev-system. Renders into the consumer's repo root.
 #
 # Posture: default gitleaks v8 rules in full ("useDefault = true").
 # No allowlist — consumers add their own as needed (e.g. for sentinel

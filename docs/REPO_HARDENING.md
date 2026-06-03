@@ -1,6 +1,6 @@
-# packetvoid-dev-system — repository hardening (D0g)
+# trellis-dev-system — repository hardening (D0g)
 
-This document describes the gates packetvoid-dev-system enforces on
+This document describes the gates trellis-dev-system enforces on
 itself and the branch-protection settings recommended once a second
 consumer adopts the dev system. It is the dogfood counterpart to the
 portable `secret-scan.yml` template the dev system emits to consumer
@@ -108,6 +108,6 @@ to every consumer.
 
 - Portable consumer template: `devsystem/github/workflows/secret-scan.yml`
 - D0e PR adding the portable template:
-  <https://github.com/michaeleasterly-cpu/packetvoid-dev-system/pull/5>
+  <https://github.com/michaeleasterly-cpu/trellis-dev-system/pull/5>
 - D0f validation report (in conversation history) — confirmed all
   four profile bootstraps still pass.

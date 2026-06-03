@@ -1,6 +1,6 @@
 name: ci
 
-# Minimal CI for the packetvoid-dev-system D0a skeleton. No deployment,
+# Minimal CI for the trellis-dev-system D0a skeleton. No deployment,
 # no Docker, no Anthropic API. Just static + test gates.
 
 on:

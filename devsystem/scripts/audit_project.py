@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""D0c — Packet Void Dev System audit.
+"""D0c — Trellis audit.
 
 Detects drift between a consumer project's rendered docs and the
 result of re-rendering the current dev-system templates against the

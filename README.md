@@ -1,4 +1,4 @@
-# Packet Void Dev System
+# Trellis
 
 A reusable, hand-portable scaffold for Claude-assisted development. Packages the Claude/dev workflow surfaces that proved durable in the `short-term-trading-engine` project (path registry, memory boundary, Claude-surface contract, security cascade, session/cost observability) and renders them into new repositories driven by a single `PROJECT_PROFILE.yaml`.
 
@@ -34,7 +34,7 @@ The dev system now holds itself to the same secret-handling and least-permission
 Pick a named profile seed and bootstrap into a fresh directory:
 
 ```bash
-python /path/to/packetvoid-dev-system/devsystem/scripts/bootstrap_project.py \
+python /path/to/trellis-dev-system/devsystem/scripts/bootstrap_project.py \
     --profile generic-python \
     --target-dir ./my-new-repo
 ```
@@ -42,9 +42,9 @@ python /path/to/packetvoid-dev-system/devsystem/scripts/bootstrap_project.py \
 Or override individual values with your own profile file:
 
 ```bash
-cp /path/to/packetvoid-dev-system/PROJECT_PROFILE.example.yaml ./PROJECT_PROFILE.yaml
+cp /path/to/trellis-dev-system/PROJECT_PROFILE.example.yaml ./PROJECT_PROFILE.yaml
 $EDITOR PROJECT_PROFILE.yaml
-python /path/to/packetvoid-dev-system/devsystem/scripts/bootstrap_project.py \
+python /path/to/trellis-dev-system/devsystem/scripts/bootstrap_project.py \
     --profile python-railway \
     --profile-file PROJECT_PROFILE.yaml \
     --target-dir ./my-new-repo
@@ -62,8 +62,8 @@ Bootstrapping produces:
 Audit at any time:
 
 ```bash
-python /path/to/packetvoid-dev-system/devsystem/scripts/audit_project.py --target-dir ./my-new-repo
-python /path/to/packetvoid-dev-system/devsystem/scripts/check_manifests.py --target-dir ./my-new-repo
+python /path/to/trellis-dev-system/devsystem/scripts/audit_project.py --target-dir ./my-new-repo
+python /path/to/trellis-dev-system/devsystem/scripts/check_manifests.py --target-dir ./my-new-repo
 ```
 
 ## Memory boundary

@@ -1,4 +1,4 @@
-"""D0g — sentinels for packetvoid-dev-system's own hardening surface.
+"""D0g — sentinels for trellis-dev-system's own hardening surface.
 
 These tests assert the dev system holds itself to the same secret-
 handling and least-permission discipline its portable templates teach

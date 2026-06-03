@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""D0c — Packet Void Dev System bootstrap renderer.
+"""D0c — Trellis bootstrap renderer.
 
 Reads a PROJECT_PROFILE.yaml + the D0b docs templates under
 ``devsystem/docs/`` and renders them into a consumer project's
@@ -1040,7 +1040,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="bootstrap_project",
         description=(
-            "Render Packet Void Dev System templates into a consumer "
+            "Render Trellis templates into a consumer "
             "project. See devsystem/docs/*.md.template and "
             "PROJECT_PROFILE.example.yaml."
         ),

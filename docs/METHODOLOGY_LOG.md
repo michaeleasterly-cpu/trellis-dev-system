@@ -1,4 +1,4 @@
-# Packet Void Dev System — methodology log
+# Trellis — methodology log
 
 Append-only record of methodology lessons surfaced during real-consumer work that should inform future dev-system templates, profile seeds, and consumer guidance. Each entry is dated and cites the originating consumer PR + the authoritative external doc(s).
 
@@ -46,7 +46,7 @@ The import-style entries *rot loudly*: if `SomeDataclass` is renamed/deleted, th
 
 The CI-dir-list pattern (`ruff check reversion/ vector/ tpcore/ scripts/ …`) appears to work — a missing dir name silently never gets linted — but it has a silent-leak failure mode: a new top-level Python file added at the repo root will *also* be silently unlinted until someone notices and updates the dir list. Linting intent should live in configuration, not CLI args.
 
-The current STE `ci.yml` uses the dir-list pattern for historical reasons; PR #426 fixes one specific instance (`vulture_allowlist.py`). The portable `ci.yml.template` packetvoid-dev-system ships is already cleaner — it runs `python -m ruff check .` against the whole tree (no dir filter), which is the correct default because consumer projects start with `extend-exclude = []` and grow exclusions deliberately in `pyproject.toml`.
+The current STE `ci.yml` uses the dir-list pattern for historical reasons; PR #426 fixes one specific instance (`vulture_allowlist.py`). The portable `ci.yml.template` trellis-dev-system ships is already cleaner — it runs `python -m ruff check .` against the whole tree (no dir filter), which is the correct default because consumer projects start with `extend-exclude = []` and grow exclusions deliberately in `pyproject.toml`.
 
 **Recommendation for the dev system.**
 - **Keep the portable `ci.yml.template`'s current `ruff check .` posture.** It already follows ruff's documented default-correct pattern (walk the whole tree; let `pyproject.toml extend-exclude` carry intent).

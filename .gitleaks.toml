@@ -1,4 +1,4 @@
-# D0g — gitleaks configuration for packetvoid-dev-system.
+# D0g — gitleaks configuration for trellis-dev-system.
 #
 # Default gitleaks v8 rules are kept in full ("extend.useDefault = true").
 # The only allowlist below covers the sentinel-pattern tuples that
@@ -18,7 +18,7 @@
 # `devsystem/github/workflows/secret-scan.yml` enforces — we hold the
 # dev-system repo to the same standard.
 
-title = "packetvoid-dev-system gitleaks config"
+title = "trellis-dev-system gitleaks config"
 
 [extend]
 useDefault = true
