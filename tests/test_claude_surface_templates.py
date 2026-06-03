@@ -21,6 +21,7 @@ Stdlib-only.
 """
 from __future__ import annotations
 
+import json
 import re
 import stat
 from pathlib import Path
@@ -83,6 +84,97 @@ def test_security_review_skill_present_and_model_invocable() -> None:
     frontmatter = text[: closing]
     assert "disable-model-invocation: true" not in frontmatter, (
         "security-review SKILL.md must remain model-invocable"
+    )
+
+
+def test_settings_template_present() -> None:
+    _text(_CLAUDE / "settings.json.template")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# settings.json.template — Phase-3 canonical keys (permissions + worktree)
+# ─────────────────────────────────────────────────────────────────────
+
+def _settings_json() -> dict:
+    """Parse settings.json.template as JSON after stripping the only
+    placeholder it carries (``{{ project_name }}``, inside a string)."""
+    text = _text(_CLAUDE / "settings.json.template")
+    # The sole placeholder lives inside a JSON string value, so a literal
+    # substitution keeps the document valid JSON.
+    text = text.replace("{{ project_name }}", "example-project")
+    leftovers = re.findall(r"\{\{\s*[A-Za-z0-9_]+\s*\}\}", text)
+    assert not leftovers, f"unexpected placeholders in settings template: {leftovers}"
+    return json.loads(text)
+
+
+def test_settings_template_valid_json_after_render() -> None:
+    data = _settings_json()
+    assert isinstance(data, dict)
+    assert "hooks" in data, "settings template lost its hooks block"
+
+
+def test_settings_template_permissions_deny_and_default_mode() -> None:
+    data = _settings_json()
+    perms = data.get("permissions")
+    assert isinstance(perms, dict), "settings template missing permissions block"
+    assert perms.get("defaultMode") == "default", (
+        "permissions.defaultMode must be the explicit canonical 'default'"
+    )
+    deny = perms.get("deny")
+    assert isinstance(deny, list) and deny, "permissions.deny must be a non-empty list"
+    # Secret-file + destructive-op coverage (Anthropic-canonical second layer).
+    required_deny = (
+        "Read(./.env)",
+        "Read(./.env.*)",
+        "Edit(./.env)",
+        "Write(./.env)",
+        "Read(./secrets/**)",
+        "Read(~/.ssh/**)",
+        "Read(~/.aws/**)",
+        "Read(~/.gnupg/**)",
+        "Read(~/.netrc)",
+        "Read(~/.config/gh/**)",
+        "Bash(rm -rf /)",
+        "Bash(rm -rf /*)",
+        "Bash(rm -rf ~)",
+        "Bash(rm -rf ~/*)",
+        "Bash(rm -rf $HOME*)",
+        "Bash(dd if=*)",
+        "Bash(chmod -R 777 *)",
+        "Bash(chown -R *)",
+    )
+    missing = [rule for rule in required_deny if rule not in deny]
+    assert not missing, f"permissions.deny missing canonical rules: {missing}"
+
+
+def test_settings_template_deny_excludes_curl_and_wget() -> None:
+    """curl/wget are deliberately NOT denied — consumers legitimately use
+    them; the donor just removed those entries. Guard against re-adding."""
+    data = _settings_json()
+    deny = data["permissions"]["deny"]
+    for forbidden in ("Bash(curl *)", "Bash(wget *)"):
+        assert forbidden not in deny, (
+            f"{forbidden!r} must NOT be in permissions.deny (intentionally "
+            "excluded for portability)"
+        )
+
+
+def test_settings_template_worktree_block() -> None:
+    data = _settings_json()
+    worktree = data.get("worktree")
+    assert isinstance(worktree, dict), "settings template missing worktree block"
+    assert worktree.get("baseRef") == "fresh", (
+        "worktree.baseRef must be 'fresh' (branch subagent worktrees from origin/main)"
+    )
+    assert worktree.get("bgIsolation") == "worktree", (
+        "worktree.bgIsolation must be 'worktree'"
+    )
+
+
+def test_settings_template_keeps_project_name_placeholder() -> None:
+    text = _text(_CLAUDE / "settings.json.template")
+    assert "{{ project_name }}" in text, (
+        "settings template must keep the {{ project_name }} placeholder"
     )
 
 

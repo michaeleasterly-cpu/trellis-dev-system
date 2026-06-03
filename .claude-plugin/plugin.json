@@ -1,0 +1,6 @@
+{
+  "name": "trellis-dev-system",
+  "description": "Reusable, profile-driven scaffold for Claude-assisted development.",
+  "version": "0.1.0",
+  "author": "Michael Easterly"
+}
